@@ -3,6 +3,7 @@ import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { SignUp } from './pages/SignUp';
+import { ResetPassword } from './pages/ResetPassword';
 import { KYC } from './pages/KYC';
 import { Dashboard } from './pages/Dashboard';
 import { Products } from './pages/Products';
@@ -29,6 +30,7 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/kyc" element={
               <ProtectedRoute>
                   <KYC />

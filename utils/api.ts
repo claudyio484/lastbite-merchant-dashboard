@@ -131,6 +131,36 @@ export async function getMe() {
   return apiFetch<{ success: boolean; user: any }>('/auth/me');
 }
 
+// ─── Password Reset ─────────────────────────────────────
+export async function forgotPasswordApi(email: string) {
+  return apiFetch<{ success: boolean; message: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPasswordApi(token: string, password: string) {
+  return apiFetch<{ success: boolean; message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
+  });
+}
+
+// ─── Email OTP ──────────────────────────────────────────
+export async function sendEmailOtpApi(email: string) {
+  return apiFetch<{ success: boolean; message: string; code?: string }>('/auth/send-email-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function verifyEmailOtpApi(email: string, code: string) {
+  return apiFetch<{ success: boolean; message: string }>('/auth/verify-email-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  });
+}
+
 // ─── Dashboard ───────────────────────────────────────────
 export async function getDashboardStats() {
   return apiFetch<{ success: boolean; data: any }>('/dashboard/stats');

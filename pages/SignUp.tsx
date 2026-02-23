@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Leaf, ArrowRight, Check, Lock, Mail, Phone, Eye, EyeOff, MessageSquare } from 'lucide-react';
-import { registerApi } from '../utils/api';
+import { Leaf, ArrowRight, Check, Lock, Mail, Phone, Eye, EyeOff, Send } from 'lucide-react';
+import { registerApi, sendEmailOtpApi, verifyEmailOtpApi } from '../utils/api';
 
 export const SignUp: React.FC = () => {
   const navigate = useNavigate();
@@ -18,20 +18,40 @@ export const SignUp: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [error, setError] = useState('');
+
   // OTP State
   const [otp, setOtp] = useState(['', '', '', '']);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
     setIsLoading(true);
-    
-    // Simulate API call to send OTP
-    setTimeout(() => {
-      setIsLoading(false);
+    setError('');
+
+    try {
+      const nameParts = formData.ownerName.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      await registerApi({
+        firstName,
+        lastName,
+        email: formData.email,
+        password: formData.password,
+        phone: formData.phone ? `+971${formData.phone.replace(/\s/g, '')}` : undefined,
+        storeName: `${firstName}'s Store`,
+      });
+      // Registration auto-sends OTP email from backend
       setStep('otp');
-    }, 1000);
+    } catch (err: any) {
+      setError(err.message || 'Registration failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleOtpChange = (index: number, value: string) => {
@@ -54,26 +74,27 @@ export const SignUp: React.FC = () => {
 
   const handleVerifyOtp = async () => {
     setIsLoading(true);
+    setError('');
     try {
-      const nameParts = formData.ownerName.trim().split(' ');
-      const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || '';
-      await registerApi({
-        firstName,
-        lastName,
-        email: formData.email,
-        password: formData.password,
-        phone: formData.phone,
-        storeName: `${firstName}'s Store`,
-      });
+      await verifyEmailOtpApi(formData.email, otp.join(''));
       localStorage.setItem('kycStatus', 'pending');
       localStorage.setItem('trialStartDate', new Date().toISOString());
       localStorage.setItem('ownerName', formData.ownerName);
       navigate('/kyc');
     } catch (err: any) {
-      alert(err.message || 'Registration failed');
+      setError(err.message || 'Invalid verification code');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    setError('');
+    try {
+      await sendEmailOtpApi(formData.email);
+      setOtp(['', '', '', '']);
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend code');
     }
   };
 
@@ -277,11 +298,17 @@ export const SignUp: React.FC = () => {
             <div className="animate-in fade-in slide-in-from-right duration-300">
                 <div className="text-center mb-8">
                     <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-6 text-brand-600">
-                        <MessageSquare size={32} />
+                        <Mail size={32} />
                     </div>
-                    <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Verify Mobile Number</h2>
-                    <p className="text-gray-500">We sent a 4-digit code to <span className="font-bold text-gray-900">+971 {formData.phone}</span></p>
+                    <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Verify Your Email</h2>
+                    <p className="text-gray-500">We sent a 4-digit code to <span className="font-bold text-gray-900">{formData.email}</span></p>
                 </div>
+
+                {error && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm text-center">
+                    {error}
+                  </div>
+                )}
 
                 <div className="space-y-8">
                     <div className="flex justify-center gap-4">
@@ -299,7 +326,7 @@ export const SignUp: React.FC = () => {
                         ))}
                     </div>
 
-                    <button 
+                    <button
                         onClick={handleVerifyOtp}
                         disabled={otp.join('').length !== 4 || isLoading}
                         className="w-full py-4 bg-brand-600 text-white rounded-2xl font-bold text-lg shadow-lg shadow-brand-200 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
@@ -311,12 +338,19 @@ export const SignUp: React.FC = () => {
                         )}
                     </button>
 
-                    <div className="text-center">
-                        <button 
-                            onClick={() => setStep('form')}
+                    <div className="text-center space-y-3">
+                        <button
+                            onClick={handleResendOtp}
+                            className="text-sm font-bold text-brand-600 hover:text-brand-700 hover:underline"
+                        >
+                            Resend Code
+                        </button>
+                        <br />
+                        <button
+                            onClick={() => { setStep('form'); setError(''); }}
                             className="text-sm font-bold text-gray-400 hover:text-gray-600"
                         >
-                            Change Number?
+                            Change Email?
                         </button>
                     </div>
                 </div>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Leaf, ArrowRight, Check, Lock, Mail, ArrowLeft, Send } from 'lucide-react';
-import { loginApi } from '../utils/api';
+import { loginApi, forgotPasswordApi } from '../utils/api';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -31,16 +31,20 @@ export const Login: React.FC = () => {
     }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
-    
+
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+    setError('');
+    try {
+      await forgotPasswordApi(email);
       setIsResetSent(true);
-    }, 1500);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send reset link');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const resetFlow = () => {
