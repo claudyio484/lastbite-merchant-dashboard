@@ -1,0 +1,5 @@
+{
+  "name": "LastBite Merchant Dashboard",
+  "description": "A responsive dashboard for grocery merchants to manage near-expiry inventory, reduce waste, and track orders efficiently.",
+  "requestFramePermissions": []
+}
