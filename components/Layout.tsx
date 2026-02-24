@@ -4,7 +4,7 @@ import {
   LayoutDashboard, 
   ShoppingBag, 
   ClipboardList, 
-  Megaphone, 
+  Users, 
   BarChart3, 
   MessageSquare, 
   Settings, 
@@ -21,23 +21,19 @@ import {
   CheckCircle2,
   AlertCircle,
   Package,
-  Clock
+  Clock,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { logoutApi, fetchNotificationPreview } from '../utils/api';
-
-interface NotificationItem {
-    id: string;
-    title: string;
-    message: string;
-    time: string;
-    type: 'order' | 'alert' | 'message';
-    unread: boolean;
-    link?: string;
-}
+import { getOrders } from '../utils/orderStorage';
+import { getProducts } from '../utils/productStorage';
+import { getConversations } from '../utils/messageStorage';
+import { OrderStatus, NotificationItem } from '../types';
 
 export const Layout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const location = useLocation();
@@ -48,47 +44,111 @@ export const Layout: React.FC = () => {
   const [notificationsList, setNotificationsList] = useState<NotificationItem[]>([]);
   const [orderCount, setOrderCount] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
+  const [merchantProfile, setMerchantProfile] = useState<{name: string, logo: string | null, ownerName: string}>({ name: 'My Grocery', logo: null, ownerName: 'Joe Doe' });
 
-  // Get user from localStorage (set during login)
-  const storedUser = localStorage.getItem('user');
-  const user = storedUser ? JSON.parse(storedUser) : null;
-  const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'User';
-  const userInitials = user ? `${(user.firstName || '')[0] || ''}${(user.lastName || '')[0] || ''}`.toUpperCase() : 'U';
-  const storeName = user?.tenant?.name || 'My Store';
+  const updateLiveState = () => {
+      // 1. Get New Orders
+      const orders = getOrders();
+      const newOrders = orders.filter(o => o.status === OrderStatus.NEW);
+      setOrderCount(newOrders.length);
 
-  const updateLiveState = async () => {
-      try {
-        const res = await fetchNotificationPreview();
-        if (res.success && res.data) {
-          const notifs: NotificationItem[] = res.data.map((n: any) => ({
-            id: n.id,
-            title: n.title,
-            message: n.body,
-            time: new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            type: n.type === 'NEW_ORDER' ? 'order' : n.type === 'NEW_MESSAGE' ? 'message' : 'alert',
-            unread: !n.isRead,
-            link: n.type === 'NEW_ORDER' ? '/orders' : n.type === 'NEW_MESSAGE' ? '/messages' : '/products',
-          }));
-          setNotificationsList(notifs);
-          setOrderCount(notifs.filter(n => n.type === 'order' && n.unread).length);
-          setMessageCount(notifs.filter(n => n.type === 'message' && n.unread).length);
-        }
-      } catch {
-        // Silently fail - notifications are non-critical
+      // 2. Get Unread Messages
+      const conversations = getConversations();
+      const unreadMsgs = conversations.reduce((acc, curr) => acc + curr.unread, 0);
+      setMessageCount(unreadMsgs);
+
+      // 3. Build Notifications List
+      const notifs: NotificationItem[] = [];
+
+      // Add Orders
+      newOrders.forEach(o => {
+          notifs.push({
+              id: `order-${o.id}`,
+              title: `New Order ${o.id}`,
+              message: `${o.customerName} placed a ${o.type} order.`,
+              time: o.timestamp || 'Just now',
+              type: 'order',
+              unread: true,
+              link: '/orders'
+          });
+      });
+
+      // Add Low Stock Alerts
+      const products = getProducts();
+      const lowStock = products.filter(p => p.quantity < 5 && p.quantity > 0);
+      lowStock.forEach(p => {
+          notifs.push({
+              id: `product-${p.id}`,
+              title: 'Low Stock Alert',
+              message: `${p.name} is below threshold (${p.quantity} units).`,
+              time: 'Action Needed',
+              type: 'alert',
+              unread: true,
+              link: '/products'
+          });
+      });
+
+      // Add Message Alerts
+      const unreadConversations = conversations.filter(c => c.unread > 0);
+      unreadConversations.forEach(c => {
+          notifs.push({
+              id: `msg-${c.id}`,
+              title: 'New Message',
+              message: `${c.name}: ${c.lastMessage}`,
+              time: c.time,
+              type: 'message',
+              unread: true,
+              link: '/messages'
+          });
+      });
+
+      setNotificationsList(notifs);
+  };
+
+  const loadProfile = () => {
+      const settingsStr = localStorage.getItem('lastbite_merchant_settings');
+      // Default fallback
+      let name = 'My Grocery';
+      let logo = null;
+      let ownerName = localStorage.getItem('ownerName') || 'Joe Doe';
+      
+      // Attempt to load from settings
+      if (settingsStr) {
+          try {
+              const settings = JSON.parse(settingsStr);
+              if (settings.storeName) name = settings.storeName;
+              if (settings.storeLogo) logo = settings.storeLogo;
+          } catch (e) {
+              console.error("Error parsing settings for profile", e);
+          }
+      } else {
+          // Attempt legacy storage fallback
+          const legacyName = localStorage.getItem('storeName');
+          if (legacyName) name = legacyName;
       }
+      
+      // Truncate name to 14 chars
+      if (name.length > 14) name = name.substring(0, 14) + '...';
+      
+      setMerchantProfile({ name, logo, ownerName });
   };
 
   useEffect(() => {
       updateLiveState();
-      // Refresh notifications every 30 seconds
-      const interval = setInterval(updateLiveState, 30000);
-      return () => clearInterval(interval);
+      loadProfile();
+      // Listen for local updates from other components
+      window.addEventListener('localDataUpdate', updateLiveState);
+      window.addEventListener('localDataUpdate', loadProfile);
+      return () => {
+          window.removeEventListener('localDataUpdate', updateLiveState);
+          window.removeEventListener('localDataUpdate', loadProfile);
+      };
   }, []);
 
   const closeSidebar = () => setIsSidebarOpen(false);
 
-  const handleLogout = async () => {
-    await logoutApi();
+  const handleLogout = () => {
+    localStorage.removeItem('isAuthenticated');
     navigate('/login');
   };
 
@@ -98,10 +158,6 @@ export const Layout: React.FC = () => {
   };
 
   const markAllRead = () => {
-      // In a real app, this would update a 'read' status in DB.
-      // Here, we can't easily modify the source data 'read' status for all types genericly without complex logic.
-      // We will just clear the local visual list for this session or implemented a specific 'read' logic.
-      // For now, let's just close the dropdown as the source of truth (Order Status, Message Read) hasn't changed.
       setIsNotificationsOpen(false);
   }
 
@@ -129,11 +185,26 @@ export const Layout: React.FC = () => {
     }
   }, []);
 
+  // Reset collapsed state on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setIsCollapsed(false);
+      }
+    };
+
+    // Initial check
+    handleResize();
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const navItems = [
     { name: t('dashboard'), path: '/', icon: <LayoutDashboard size={20} /> },
     { name: t('products'), path: '/products', icon: <ShoppingBag size={20} /> },
     { name: t('orders'), path: '/orders', icon: <ClipboardList size={20} />, badge: orderCount > 0 ? orderCount : undefined },
-    { name: t('promotions'), path: '/promotions', icon: <Megaphone size={20} /> },
+    { name: t('users'), path: '/users', icon: <Users size={20} /> }, 
     { name: t('analytics'), path: '/analytics', icon: <BarChart3 size={20} /> },
     { name: t('messages'), path: '/messages', icon: <MessageSquare size={20} />, badge: messageCount > 0 ? messageCount : undefined },
     { name: t('settings'), path: '/settings', icon: <Settings size={20} /> },
@@ -152,66 +223,83 @@ export const Layout: React.FC = () => {
       {/* Sidebar - Floating Style */}
       <aside 
         className={`
-          fixed md:relative z-30 flex flex-col w-72 h-full md:h-[calc(100vh-2rem)] md:m-4 md:rounded-3xl
-          bg-white dark:bg-slate-800 shadow-soft transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) border-r border-transparent dark:border-slate-700/50
+          fixed md:relative z-30 flex flex-col 
+          ${isCollapsed ? 'w-20' : 'w-72'} 
+          h-full md:h-[calc(100vh-2rem)] md:m-4 md:rounded-3xl
+          bg-white dark:bg-slate-800 shadow-soft transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) border-r border-transparent dark:border-slate-700/50
           ${isSidebarOpen ? 'translate-x-0' : (language === 'ar' ? 'translate-x-full md:translate-x-0' : '-translate-x-full md:translate-x-0')}
         `}
       >
-        <div className="flex items-center gap-3 h-24 px-8 shrink-0">
-          <div className="bg-gradient-to-br from-brand-400 to-brand-600 p-2.5 rounded-2xl text-white shadow-glow">
-            <Leaf size={22} strokeWidth={2.5} />
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between px-6'} h-24 shrink-0 transition-all`}>
+          <div className="flex items-center gap-3 overflow-hidden">
+            {merchantProfile.logo ? (
+                <img src={merchantProfile.logo} alt="Store Logo" className="w-10 h-10 rounded-xl object-cover shadow-sm border border-gray-100 dark:border-slate-700 shrink-0" />
+            ) : (
+                <div className="bg-gradient-to-br from-brand-400 to-brand-600 p-2.5 rounded-2xl text-white shadow-glow shrink-0">
+                  <Store size={22} strokeWidth={2.5} />
+                </div>
+            )}
+            {!isCollapsed && (
+              <span className="text-xl font-extrabold tracking-tight text-gray-900 dark:text-white truncate animate-fade-in">
+                {merchantProfile.name}
+              </span>
+            )}
           </div>
-          <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">LastBite</span>
+          
+          {/* Collapse Toggle Button - Desktop Only */}
+          {!isCollapsed && (
+            <button 
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="hidden md:flex p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          )}
         </div>
+        
+        {/* Collapsed Toggle Button - Centered when collapsed */}
+        {isCollapsed && (
+           <button 
+             onClick={() => setIsCollapsed(!isCollapsed)}
+             className="hidden md:flex mx-auto mb-4 p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+           >
+             <ChevronRight size={18} />
+           </button>
+        )}
 
-        <nav className="flex-1 overflow-y-auto py-2 px-6 space-y-2 no-scrollbar">
-          <p className="px-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">{t('menu')}</p>
+        <nav className={`flex-1 overflow-y-auto py-2 ${isCollapsed ? 'px-2' : 'px-6'} space-y-2 no-scrollbar transition-all`}>
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               onClick={closeSidebar}
               className={({ isActive }) => `
-                flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all duration-300
+                flex items-center ${isCollapsed ? 'justify-center px-0' : 'gap-3.5 px-4'} py-3.5 rounded-2xl text-sm font-bold transition-all duration-300 group relative
                 ${isActive 
-                  ? `bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 shadow-sm ${language === 'ar' ? '-translate-x-1' : 'translate-x-1'}` 
+                  ? `bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 shadow-sm ${!isCollapsed && (language === 'ar' ? '-translate-x-1' : 'translate-x-1')}` 
                   : 'text-gray-500 dark:text-gray-400 hover:bg-cream-100 dark:hover:bg-slate-700/50 hover:text-gray-900 dark:hover:text-white'}
               `}
+              title={isCollapsed ? item.name : ''}
             >
               {item.icon}
-              <span className="flex-1">{item.name}</span>
+              {!isCollapsed && <span className="flex-1 animate-fade-in">{item.name}</span>}
+              
+              {/* Badge */}
               {item.badge && (
-                <span className="bg-rose-400 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm">
-                  {item.badge}
-                </span>
+                isCollapsed ? (
+                  <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-rose-400 rounded-full border-2 border-white dark:border-slate-800"></span>
+                ) : (
+                  <span className="bg-rose-400 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm animate-fade-in">
+                    {item.badge}
+                  </span>
+                )
               )}
             </NavLink>
           ))}
-
-          {/* Trial Banner */}
-          <div className="pt-6">
-            <div className="relative p-5 rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 dark:from-slate-700 dark:to-slate-900 text-white shadow-lg overflow-hidden group border border-white/10 dark:border-slate-700">
-                <div className={`absolute top-0 ${language === 'ar' ? 'left-0 -translate-x-1/2' : 'right-0 translate-x-1/2'} w-32 h-32 bg-brand-500 rounded-full blur-3xl opacity-20 -translate-y-1/2`}></div>
-                <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-2">
-                        <span className="p-1.5 bg-white/10 rounded-lg text-brand-300"><Crown size={16} /></span>
-                        <span className="text-[10px] font-bold bg-brand-600 px-2 py-0.5 rounded text-white">Trial</span>
-                    </div>
-                    <h4 className="font-bold text-sm mb-1">Premium Plan</h4>
-                    <p className="text-xs text-gray-300 mb-3">{daysLeft} days remaining in your free trial.</p>
-                    <button 
-                      onClick={handleUpgrade}
-                      className="w-full py-2 bg-white text-gray-900 rounded-lg text-xs font-bold hover:bg-brand-50 transition-colors"
-                    >
-                        {t('upgrade_now')}
-                    </button>
-                </div>
-            </div>
-          </div>
         </nav>
         
         {/* Footer: Powered by LastBite */}
-        <div className="p-6 mt-auto">
+        <div className={`p-6 mt-auto transition-all ${isCollapsed ? 'opacity-0 hidden' : 'opacity-100'}`}>
             <div className="flex flex-col items-center justify-center gap-1 opacity-60 hover:opacity-100 transition-opacity cursor-default">
                 <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{t('powered_by')}</p>
                 <div className="flex items-center gap-1.5 text-brand-800 dark:text-brand-300 font-extrabold text-sm">
@@ -236,29 +324,29 @@ export const Layout: React.FC = () => {
             
             {location.pathname === '/' && (
               <div className="hidden md:flex flex-col animate-fade-in">
-                  <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white">
+                  <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
                       {t('dashboard')}
                   </h2>
-                  <p className="text-sm text-gray-400 dark:text-gray-500 font-medium">{t('welcome_back')}, {user?.firstName || 'there'}!</p>
+                  <p className="text-sm font-medium text-gray-400 dark:text-gray-500 mt-0.5">{t('welcome_back')}, {merchantProfile.name.split(' ')[0]}!</p>
               </div>
             )}
           </div>
 
           <div className="flex items-center gap-3 md:gap-6">
-            <div className="hidden md:flex items-center bg-white dark:bg-slate-800 px-4 py-2.5 rounded-xl shadow-soft border border-gray-100 dark:border-slate-700 w-64 transition-colors">
+            <div className="hidden md:flex items-center bg-white dark:bg-slate-800 px-4 h-12 rounded-xl shadow-soft border border-gray-100 dark:border-slate-700 w-64 transition-colors">
                 <Search size={18} className="text-gray-400" />
-                <input type="text" placeholder={t('search_placeholder')} className={`bg-transparent outline-none text-sm w-full dark:text-gray-200 dark:placeholder-gray-500 ${language === 'ar' ? 'mr-3' : 'ml-3'}`} />
+                <input type="text" placeholder={t('search_placeholder')} className={`bg-transparent outline-none text-sm font-medium w-full dark:text-gray-200 dark:placeholder-gray-500 ${language === 'ar' ? 'mr-3' : 'ml-3'}`} />
             </div>
 
             {/* Notifications Dropdown */}
             <div className="relative">
                 <button 
                   onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                  className={`relative p-3 rounded-xl shadow-soft hover:shadow-md transition-all ${isNotificationsOpen ? 'bg-brand-50 dark:bg-brand-900 text-brand-600 dark:text-brand-300' : 'bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 hover:text-brand-600'}`}
+                  className={`relative h-12 w-12 flex items-center justify-center rounded-xl shadow-soft hover:shadow-md transition-all ${isNotificationsOpen ? 'bg-brand-50 dark:bg-brand-900 text-brand-600 dark:text-brand-300' : 'bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 hover:text-brand-600'}`}
                 >
                   <Bell size={20} />
                   {notificationsList.some(n => n.unread) && (
-                    <span className={`absolute top-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white dark:border-slate-800 ${language === 'ar' ? 'left-2' : 'right-2'}`}></span>
+                    <span className={`absolute top-3 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white dark:border-slate-800 ${language === 'ar' ? 'left-3' : 'right-3'}`}></span>
                   )}
                 </button>
 
@@ -296,7 +384,7 @@ export const Layout: React.FC = () => {
                                                     <p className={`text-sm truncate pr-2 ${notif.unread ? 'font-bold text-gray-900 dark:text-white' : 'font-medium text-gray-600 dark:text-gray-400'}`}>{notif.title}</p>
                                                     <span className={`text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0 ${language === 'ar' ? 'mr-2' : 'ml-2'}`}>{notif.time}</span>
                                                  </div>
-                                                 <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors line-clamp-2">{notif.message}</p>
+                                                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 leading-relaxed group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors line-clamp-2">{notif.message}</p>
                                              </div>
                                         </div>
                                     ))
@@ -307,7 +395,7 @@ export const Layout: React.FC = () => {
                                 )}
                             </div>
                             <div className="p-2 border-t border-gray-50 dark:border-slate-700 bg-gray-50/30 dark:bg-slate-900/30 text-center">
-                                <button onClick={() => navigate('/messages')} className="w-full py-2 text-xs font-bold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all">View All Activity</button>
+                                <button onClick={() => { setIsNotificationsOpen(false); navigate('/notifications'); }} className="w-full py-2 text-xs font-bold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all">View All Activity</button>
                             </div>
                         </div>
                     </>
@@ -318,10 +406,10 @@ export const Layout: React.FC = () => {
             <div className="relative">
                 <button 
                     onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="flex items-center gap-2 pl-1 pr-1 md:pr-3 py-1 bg-white dark:bg-slate-800 rounded-xl shadow-soft hover:shadow-md transition-all border border-transparent hover:border-gray-100 dark:hover:border-slate-700"
+                    className="flex items-center gap-2 pl-1 pr-1 md:pr-3 h-12 bg-white dark:bg-slate-800 rounded-xl shadow-soft hover:shadow-md transition-all border border-transparent hover:border-gray-100 dark:hover:border-slate-700"
                 >
-                    <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-900 flex items-center justify-center text-brand-700 dark:text-brand-300 font-bold border-2 border-white dark:border-slate-700 shadow-sm">
-                        {userInitials}
+                    <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-900 flex items-center justify-center text-brand-700 dark:text-brand-300 font-bold border-2 border-white dark:border-slate-700 shadow-sm overflow-hidden">
+                        {merchantProfile.logo ? <img src={merchantProfile.logo} className="w-full h-full object-cover" /> : 'JD'}
                     </div>
                     <ChevronDown size={16} className="text-gray-400 hidden md:block" />
                 </button>
@@ -332,11 +420,11 @@ export const Layout: React.FC = () => {
                         <div className={`absolute top-full mt-2 w-60 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-700 p-2 z-20 animate-in fade-in slide-in-from-top-2 duration-200 ${language === 'ar' ? 'left-0' : 'right-0'}`}>
                             <div className="p-3 bg-cream-50 dark:bg-slate-900 rounded-xl mb-2 flex items-center gap-3">
                                 <div className="p-2 bg-white dark:bg-slate-800 rounded-lg text-brand-600 dark:text-brand-400 shadow-sm">
-                                    <Store size={18} />
+                                    <User size={18} />
                                 </div>
                                 <div>
-                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('menu')}</p>
-                                    <p className="font-bold text-gray-900 dark:text-white text-sm">{storeName}</p>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('profile')}</p>
+                                    <p className="font-bold text-gray-900 dark:text-white text-sm truncate w-32">{merchantProfile.ownerName}</p>
                                 </div>
                             </div>
                             

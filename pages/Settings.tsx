@@ -47,11 +47,15 @@ export const Settings: React.FC = () => {
   const [darkMode, setDarkMode] = useState(false);
   
   // Profile State
+  const [ownerName, setOwnerName] = useState('Joe Doe');
+  const [ownerPosition, setOwnerPosition] = useState('Owner');
   const [profilePhone, setProfilePhone] = useState('+971 50 123 4567');
+  const [profileEmail, setProfileEmail] = useState('joe@example.com');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const profileInputRef = useRef<HTMLInputElement>(null);
   
   // Store State
+  const [storeName, setStoreName] = useState("Joe's Grocery");
   const [storePhone, setStorePhone] = useState('+971 50 000 0000');
   const [storeLogo, setStoreLogo] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -81,12 +85,21 @@ export const Settings: React.FC = () => {
 
     // Load persisted settings
     const savedSettings = localStorage.getItem('lastbite_merchant_settings');
+    const savedOwnerName = localStorage.getItem('ownerName');
+    
+    if (savedOwnerName) setOwnerName(savedOwnerName);
+
     if (savedSettings) {
         try {
             const parsed = JSON.parse(savedSettings);
             if (parsed.profilePhoto) setProfilePhoto(parsed.profilePhoto);
             if (parsed.storeLogo) setStoreLogo(parsed.storeLogo);
-            if (parsed.savedCards) setSavedCards(parsed.savedCards);
+            if (parsed.storeName) setStoreName(parsed.storeName);
+            if (parsed.storePhone) setStorePhone(parsed.storePhone);
+            if (parsed.profilePhone) setProfilePhone(parsed.profilePhone);
+            if (parsed.profileEmail) setProfileEmail(parsed.profileEmail);
+            if (parsed.ownerPosition) setOwnerPosition(parsed.ownerPosition);
+            if (parsed.savedCards && Array.isArray(parsed.savedCards)) setSavedCards(parsed.savedCards);
         } catch (e) {
             console.error("Failed to load settings", e);
         }
@@ -99,6 +112,7 @@ export const Settings: React.FC = () => {
         : {};
       const newSettings = { ...current, ...updates };
       localStorage.setItem('lastbite_merchant_settings', JSON.stringify(newSettings));
+      window.dispatchEvent(new Event('localDataUpdate'));
   };
 
   const toggleDarkMode = () => {
@@ -117,6 +131,16 @@ export const Settings: React.FC = () => {
   };
 
   const handleSave = () => {
+      // Save owner name globally
+      localStorage.setItem('ownerName', ownerName);
+      
+      saveSettingsToStorage({
+          storeName,
+          storePhone,
+          profilePhone,
+          profileEmail,
+          ownerPosition
+      });
       alert("Settings saved successfully!");
   }
 
@@ -132,7 +156,7 @@ export const Settings: React.FC = () => {
 INVOICE ${id}
 --------------------------
 Date: ${new Date().toLocaleDateString()}
-Merchant: Joe's Grocery
+Merchant: ${storeName}
 Items: Subscription Plan (${currentPlan})
 Amount: AED 99.00
 Status: Paid
@@ -246,10 +270,11 @@ Thank you for using LastBite!
       
       setCardForm({ number: '', expiry: '', cvc: '', holder: '' });
       setShowCardModal(false);
+      alert('Payment method added successfully.');
   };
 
   const handleDeleteCard = (id: string) => {
-      if (window.confirm("Remove this payment method?")) {
+      if (window.confirm("Are you sure you want to remove this payment method?")) {
           const updated = savedCards.filter(c => c.id !== id);
           setSavedCards(updated);
           saveSettingsToStorage({ savedCards: updated });
@@ -264,7 +289,7 @@ Thank you for using LastBite!
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8 relative">
-      <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">{t('settings_title')}</h1>
+      <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">{t('settings_title')}</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         
@@ -344,19 +369,38 @@ Thank you for using LastBite!
                    </div>
                    
                    <div>
-                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">Joe Doe</h2>
-                      <p className="text-gray-500 dark:text-gray-400 font-medium">{t('owner_role')} • Joe's Grocery</p>
+                      <h2 className="text-xl font-bold text-gray-900 dark:text-white">{ownerName}</h2>
+                      <p className="text-gray-500 dark:text-gray-400 font-medium">{ownerPosition} • {storeName}</p>
                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div>
                       <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">{t('full_name')}</label>
-                      <input type="text" defaultValue="Joe Doe" className="w-full px-5 py-3.5 bg-cream-50 dark:bg-slate-900 border border-transparent dark:border-slate-700 rounded-xl font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all outline-none" />
+                      <input 
+                        type="text" 
+                        value={ownerName} 
+                        onChange={(e) => setOwnerName(e.target.value)}
+                        className="w-full px-5 py-3.5 bg-cream-50 dark:bg-slate-900 border border-transparent dark:border-slate-700 rounded-xl font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all outline-none" 
+                      />
+                   </div>
+                   <div>
+                      <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">{t('position')}</label>
+                      <input 
+                        type="text" 
+                        value={ownerPosition} 
+                        readOnly
+                        className="w-full px-5 py-3.5 bg-gray-100 dark:bg-slate-800 border border-transparent dark:border-slate-700 rounded-xl font-medium text-gray-500 dark:text-gray-400 cursor-not-allowed outline-none" 
+                      />
                    </div>
                    <div>
                       <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">{t('email_address')}</label>
-                      <input type="email" defaultValue="joe@example.com" className="w-full px-5 py-3.5 bg-cream-50 dark:bg-slate-900 border border-transparent dark:border-slate-700 rounded-xl font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all outline-none" />
+                      <input 
+                        type="email" 
+                        value={profileEmail} 
+                        onChange={(e) => setProfileEmail(e.target.value)}
+                        className="w-full px-5 py-3.5 bg-cream-50 dark:bg-slate-900 border border-transparent dark:border-slate-700 rounded-xl font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all outline-none" 
+                      />
                    </div>
                    <div>
                       <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">{t('phone_number')}</label>
@@ -387,16 +431,40 @@ Thank you for using LastBite!
           {activeTab === 'store' && (
              <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-soft p-8 space-y-8 animate-in fade-in duration-300 border border-transparent dark:border-slate-700">
                 {/* Store Status Toggle */}
-                <div className="flex items-center justify-between p-6 bg-brand-50 dark:bg-slate-700/50 rounded-2xl border border-brand-100 dark:border-slate-600">
+                <div className={`flex items-center justify-between p-6 rounded-2xl border transition-all duration-500 ${
+                    storeOpen 
+                    ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800' 
+                    : 'bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600'
+                }`}>
                    <div>
-                      <h3 className="text-lg font-bold text-brand-900 dark:text-white">{t('store_status')}</h3>
-                      <p className="text-brand-700/70 dark:text-gray-400 text-sm font-medium">{t('store_status_desc')}</p>
+                      <div className="flex items-center gap-3">
+                          <h3 className={`text-lg font-bold transition-colors duration-300 ${
+                              storeOpen ? 'text-emerald-900 dark:text-emerald-100' : 'text-gray-700 dark:text-gray-300'
+                          }`}>
+                              {t('store_status')}
+                          </h3>
+                          <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider transition-all duration-300 ${
+                              storeOpen 
+                              ? 'bg-emerald-200/50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' 
+                              : 'bg-gray-200 text-gray-500 dark:bg-slate-600 dark:text-gray-400'
+                          }`}>
+                              {storeOpen ? 'Active' : 'Offline'}
+                          </span>
+                      </div>
+                      <p className={`text-sm font-medium mt-1 transition-colors duration-300 ${
+                          storeOpen ? 'text-emerald-700/80 dark:text-emerald-400/80' : 'text-gray-500 dark:text-gray-400'
+                      }`}>
+                          {storeOpen 
+                            ? t('store_status_desc') 
+                            : "Your store is currently hidden from the marketplace. Enable it to start receiving orders."
+                          }
+                      </p>
                    </div>
                    <button 
                       onClick={() => setStoreOpen(!storeOpen)}
-                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${storeOpen ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors duration-300 focus:outline-none ${storeOpen ? 'bg-emerald-500 shadow-lg shadow-emerald-200 dark:shadow-none' : 'bg-gray-300 dark:bg-gray-600'}`}
                    >
-                      <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition transition-transform ${storeOpen ? (language === 'ar' ? '-translate-x-7' : 'translate-x-7') : (language === 'ar' ? '-translate-x-1' : 'translate-x-1')}`} />
+                      <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-sm transition transition-transform duration-300 ${storeOpen ? (language === 'ar' ? '-translate-x-7' : 'translate-x-7') : (language === 'ar' ? '-translate-x-1' : 'translate-x-1')}`} />
                    </button>
                 </div>
 
@@ -457,7 +525,12 @@ Thank you for using LastBite!
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                        <div className="md:col-span-2">
                           <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">{t('store_name')}</label>
-                          <input type="text" defaultValue="Joe's Grocery" className="w-full px-5 py-3.5 bg-cream-50 dark:bg-slate-900 border border-transparent dark:border-slate-700 rounded-xl font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all outline-none" />
+                          <input 
+                            type="text" 
+                            value={storeName} 
+                            onChange={(e) => setStoreName(e.target.value)} 
+                            className="w-full px-5 py-3.5 bg-cream-50 dark:bg-slate-900 border border-transparent dark:border-slate-700 rounded-xl font-medium text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all outline-none" 
+                          />
                        </div>
                        
                        <div className="md:col-span-2">
@@ -654,27 +727,33 @@ Thank you for using LastBite!
                 <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-soft p-8 border border-transparent dark:border-slate-700">
                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Payment Methods</h3>
                    <div className="space-y-3">
-                       {savedCards.map((card) => (
-                           <div key={card.id} className="flex items-center justify-between p-4 border border-gray-100 dark:border-slate-700 rounded-2xl bg-cream-50 dark:bg-slate-900">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-8 bg-gray-200 dark:bg-slate-700 rounded-md flex items-center justify-center font-bold text-xs text-gray-500 uppercase">{card.type}</div>
-                                    <div>
-                                        <p className="font-bold text-gray-900 dark:text-white">{card.number}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">Expires {card.expiry}</p>
+                       {savedCards.length > 0 ? (
+                           savedCards.map((card) => (
+                               <div key={card.id} className="flex items-center justify-between p-4 border border-gray-100 dark:border-slate-700 rounded-2xl bg-cream-50 dark:bg-slate-900">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-8 bg-gray-200 dark:bg-slate-700 rounded-md flex items-center justify-center font-bold text-xs text-gray-500 uppercase">{card.type}</div>
+                                        <div>
+                                            <p className="font-bold text-gray-900 dark:text-white">{card.number}</p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">Expires {card.expiry}</p>
+                                        </div>
                                     </div>
-                                </div>
-                                <button 
-                                    onClick={() => handleDeleteCard(card.id)}
-                                    className="p-2 text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
-                                    title="Remove Card"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                           </div>
-                       ))}
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleDeleteCard(card.id)}
+                                        className="p-2 text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
+                                        title="Remove Card"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                               </div>
+                           ))
+                       ) : (
+                           <div className="p-4 text-center text-gray-500 text-sm">No payment methods saved.</div>
+                       )}
                    </div>
                    
                    <button 
+                     type="button"
                      onClick={() => setShowCardModal(true)}
                      className="mt-4 w-full py-3 border border-dashed border-gray-300 dark:border-slate-600 rounded-2xl text-gray-500 dark:text-gray-400 font-bold hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-400 transition-all flex items-center justify-center gap-2"
                    >
@@ -795,54 +874,54 @@ Thank you for using LastBite!
                    <div>
                        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Card Number</label>
                        <div className="relative">
-                           <CreditCard className={`absolute top-1/2 -translate-y-1/2 text-gray-400 ${language === 'ar' ? 'right-4' : 'left-4'}`} size={18} />
+                           <CreditCard className={`absolute top-1/2 -translate-y-1/2 text-gray-400 left-4`} size={20} />
                            <input 
-                                type="text" 
-                                value={cardForm.number}
-                                onChange={handleCardNumberChange}
-                                placeholder="0000 0000 0000 0000" 
-                                maxLength={19}
-                                className={`w-full py-3 bg-cream-50 dark:bg-slate-900 rounded-xl font-medium border-none focus:ring-2 focus:ring-brand-500/20 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 ${language === 'ar' ? 'pr-12 pl-4' : 'pl-12 pr-4'}`} 
+                               type="text" 
+                               value={cardForm.number}
+                               onChange={handleCardNumberChange}
+                               className="w-full pl-12 pr-4 py-3.5 bg-cream-50 dark:bg-slate-900 rounded-xl font-medium border-none focus:ring-2 focus:ring-brand-500/20 text-gray-900 dark:text-white tracking-wider"
+                               placeholder="0000 0000 0000 0000"
                            />
                        </div>
                    </div>
                    <div className="grid grid-cols-2 gap-4">
                        <div>
-                           <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Expiry Date</label>
+                           <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Expiry</label>
                            <input 
-                                type="text" 
-                                value={cardForm.expiry}
-                                onChange={handleExpiryChange}
-                                placeholder="MM/YY" 
-                                maxLength={5}
-                                className="w-full px-4 py-3 bg-cream-50 dark:bg-slate-900 rounded-xl font-medium border-none focus:ring-2 focus:ring-brand-500/20 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500" 
+                               type="text" 
+                               value={cardForm.expiry}
+                               onChange={handleExpiryChange}
+                               className="w-full px-4 py-3.5 bg-cream-50 dark:bg-slate-900 rounded-xl font-medium border-none focus:ring-2 focus:ring-brand-500/20 text-gray-900 dark:text-white text-center tracking-wider"
+                               placeholder="MM/YY"
                            />
                        </div>
                        <div>
                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">CVC</label>
                            <input 
-                                type="text" 
-                                value={cardForm.cvc}
-                                onChange={handleCvcChange}
-                                placeholder="123" 
-                                maxLength={4}
-                                className="w-full px-4 py-3 bg-cream-50 dark:bg-slate-900 rounded-xl font-medium border-none focus:ring-2 focus:ring-brand-500/20 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500" 
+                               type="text" 
+                               value={cardForm.cvc}
+                               onChange={handleCvcChange}
+                               className="w-full px-4 py-3.5 bg-cream-50 dark:bg-slate-900 rounded-xl font-medium border-none focus:ring-2 focus:ring-brand-500/20 text-gray-900 dark:text-white text-center tracking-wider"
+                               placeholder="123"
+                               maxLength={4}
                            />
                        </div>
                    </div>
                    <div>
-                       <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Cardholder Name</label>
+                       <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Card Holder Name</label>
                        <input 
-                            type="text" 
-                            value={cardForm.holder}
-                            onChange={(e) => setCardForm({...cardForm, holder: e.target.value})}
-                            placeholder="John Doe" 
-                            className="w-full px-4 py-3 bg-cream-50 dark:bg-slate-900 rounded-xl font-medium border-none focus:ring-2 focus:ring-brand-500/20 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500" 
-                        />
+                           type="text" 
+                           value={cardForm.holder}
+                           onChange={(e) => setCardForm({...cardForm, holder: e.target.value})}
+                           className="w-full px-4 py-3.5 bg-cream-50 dark:bg-slate-900 rounded-xl font-medium border-none focus:ring-2 focus:ring-brand-500/20 text-gray-900 dark:text-white"
+                           placeholder="JOE DOE"
+                       />
                    </div>
-                   <div className="pt-4 flex gap-3">
-                       <button onClick={() => setShowCardModal(false)} className="flex-1 py-3 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-slate-700 rounded-xl transition-colors">Cancel</button>
-                       <button onClick={handleSaveCard} className="flex-1 py-3 bg-brand-600 text-white font-bold rounded-xl shadow-lg shadow-brand-200 hover:bg-brand-700 transition-all">Save Card</button>
+                   
+                   <div className="pt-4">
+                       <button onClick={handleSaveCard} className="w-full py-3 bg-brand-600 text-white rounded-xl font-bold shadow-lg shadow-brand-200 hover:bg-brand-700 transition-all">
+                           Save Card
+                       </button>
                    </div>
                </div>
            </div>

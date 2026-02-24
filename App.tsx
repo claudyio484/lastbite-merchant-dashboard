@@ -13,6 +13,9 @@ import { Orders } from './pages/Orders';
 import { Analytics } from './pages/Analytics';
 import { Messages } from './pages/Messages';
 import { Settings } from './pages/Settings';
+import { Users } from './pages/Users';
+import { UserDetails } from './pages/UserDetails';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { LanguageProvider } from './contexts/LanguageContext';
 
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
@@ -50,7 +53,10 @@ const App: React.FC = () => {
             <Route path="orders" element={<Orders />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="messages" element={<Messages />} />
+            <Route path="users" element={<Users />} />
+            <Route path="users/:id" element={<UserDetails />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="notifications" element={<NotificationsPage />} />
             <Route path="promotions" element={<div className="p-8 text-center text-gray-500">Promotions Module Coming Soon</div>} />
           </Route>
           

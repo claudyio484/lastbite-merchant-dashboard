@@ -44,3 +44,18 @@ export const deleteProduct = (id: string): void => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
   window.dispatchEvent(new Event('localDataUpdate'));
 };
+
+export const deleteProducts = (ids: string[]): void => {
+  const products = getProducts();
+  const filtered = products.filter(p => !ids.includes(p.id));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+  window.dispatchEvent(new Event('localDataUpdate'));
+};
+
+export const bulkUpdateProducts = (updates: Product[]): void => {
+  let products = getProducts();
+  const updateMap = new Map(updates.map(p => [p.id, p]));
+  products = products.map(p => updateMap.has(p.id) ? updateMap.get(p.id)! : p);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(products));
+  window.dispatchEvent(new Event('localDataUpdate'));
+};
