@@ -29,7 +29,10 @@ export interface Product {
   featuredImageUrl?: string;
   description?: string;
   isFeatured?: boolean;
+  isVisible?: boolean;
   gallery?: string[];
+  sku?: string;
+  barcode?: string;
 }
 
 export interface Order {

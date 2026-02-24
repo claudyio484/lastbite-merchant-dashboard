@@ -19,22 +19,49 @@ import {
   Copy,
   MoreHorizontal,
   ScanLine,
-  Barcode
+  Barcode,
+  Printer
 } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
-import { getProductById, deleteProduct, saveProduct } from '../utils/productStorage';
+import { fetchProductById, deleteProductApi, toggleFeaturedApi, updateProduct } from '../utils/api';
 import { Product, ProductStatus } from '../types';
+
+import { PrintPromoModal } from '../components/products/PrintPromoModal';
 
 export const ProductDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [product, setProduct] = useState<Product | undefined>(undefined);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
-      setProduct(getProductById(id));
+      fetchProductById(id).then(res => {
+        const p = res.data;
+        if (p) {
+          setProduct({
+            id: p.id,
+            name: p.name || p.productName || '',
+            category: p.category || 'Pantry',
+            originalPrice: Number(p.originalPrice ?? p.price ?? 0),
+            discountedPrice: Number(p.discountedPrice ?? p.finalPrice ?? p.originalPrice ?? 0),
+            expiryDate: p.expiryDate || p.expiry_date || new Date().toISOString(),
+            quantity: p.quantity ?? 0,
+            status: p.quantity <= 0 ? ProductStatus.SOLD_OUT
+              : (new Date(p.expiryDate || p.expiry_date) < new Date() ? ProductStatus.EXPIRED : ProductStatus.ACTIVE),
+            imageUrl: p.imageUrl || p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200',
+            featuredImageUrl: p.featuredImageUrl,
+            description: p.description || '',
+            isFeatured: p.isFeatured ?? false,
+            isVisible: p.isVisible ?? true,
+            gallery: p.gallery || [],
+            sku: p.sku,
+            barcode: p.barcode,
+          });
+        }
+      }).catch(err => console.error('Failed to fetch product:', err));
     }
   }, [id]);
 
@@ -58,37 +85,44 @@ export const ProductDetails: React.FC = () => {
       setIsDeleteModalOpen(true);
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
       if (id) {
-        deleteProduct(id);
-        navigate('/products');
+        try {
+          await deleteProductApi(id);
+          navigate('/products');
+        } catch (err) {
+          console.error('Delete failed:', err);
+        }
       }
       setIsDeleteModalOpen(false);
   }
 
-  const toggleFeatured = () => {
+  const toggleFeatured = async () => {
       if (!product) return;
       if (product.status === ProductStatus.SOLD_OUT || product.quantity <= 0) {
           alert("Cannot feature a product that is sold out.");
           return;
       }
-      const newValue = !isFeatured;
-      setIsFeatured(newValue);
-      
-      const updated = { ...product, isFeatured: newValue };
-      setProduct(updated);
-      saveProduct(updated);
+      try {
+        await toggleFeaturedApi(product.id);
+        const newValue = !isFeatured;
+        setIsFeatured(newValue);
+        setProduct({ ...product, isFeatured: newValue });
+      } catch (err) {
+        console.error('Toggle featured failed:', err);
+      }
   }
 
-  const toggleVisibility = () => {
+  const toggleVisibility = async () => {
       if (!product) return;
-      // Default to true if undefined
       const currentVisibility = product.isVisible !== false;
       const newVisibility = !currentVisibility;
-      
-      const updated = { ...product, isVisible: newVisibility };
-      setProduct(updated);
-      saveProduct(updated);
+      try {
+        await updateProduct(product.id, { isVisible: newVisibility });
+        setProduct({ ...product, isVisible: newVisibility });
+      } catch (err) {
+        console.error('Toggle visibility failed:', err);
+      }
   }
   
   const allImages = product ? [product.imageUrl, ...(product.gallery || [])] : [];
@@ -105,8 +139,8 @@ export const ProductDetails: React.FC = () => {
   const discountPercent = Math.round((1 - product.discountedPrice / product.originalPrice) * 100);
   const stockPercentage = Math.min(100, (product.quantity / 50) * 100); 
   const daysLeft = getDaysRemaining(product.expiryDate);
-  const expiryColor = daysLeft < 2 ? 'text-rose-500' : daysLeft < 4 ? 'text-amber-500' : 'text-emerald-500';
-  const expiryBg = daysLeft < 2 ? 'bg-rose-50 dark:bg-rose-900/20' : daysLeft < 4 ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20';
+  const expiryColor = daysLeft <= 2 ? 'text-rose-500' : daysLeft <= 7 ? 'text-amber-500' : 'text-emerald-500';
+  const expiryBg = daysLeft <= 2 ? 'bg-rose-50 dark:bg-rose-900/20' : daysLeft <= 7 ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20';
   
   const isVisible = product.isVisible !== false;
   const isSoldOut = product.status === ProductStatus.SOLD_OUT || product.quantity <= 0;
@@ -143,6 +177,13 @@ export const ProductDetails: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-3">
+          <button 
+            onClick={() => setIsPrintModalOpen(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 font-bold transition-all"
+          >
+             <Printer size={18} />
+             <span className="hidden sm:inline">Print Promo</span>
+          </button>
           <button className="p-3 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-all hidden sm:block">
              <Share2 size={18} />
           </button>
@@ -328,7 +369,7 @@ export const ProductDetails: React.FC = () => {
                           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
                               <Clock size={14} /> Expiry Status
                           </p>
-                          <div className={`flex items-center gap-3 p-3 rounded-xl border ${daysLeft < 2 ? 'border-rose-100 dark:border-rose-900' : daysLeft < 4 ? 'border-amber-100 dark:border-amber-900' : 'border-emerald-100 dark:border-emerald-900'} ${expiryBg}`}>
+                          <div className={`flex items-center gap-3 p-3 rounded-xl border ${daysLeft <= 2 ? 'border-rose-100 dark:border-rose-900' : daysLeft <= 7 ? 'border-amber-100 dark:border-amber-900' : 'border-emerald-100 dark:border-emerald-900'} ${expiryBg}`}>
                               <Calendar size={20} className={expiryColor} />
                               <div>
                                   <p className={`text-sm font-extrabold ${expiryColor}`}>
@@ -406,6 +447,11 @@ export const ProductDetails: React.FC = () => {
 
         </div>
       </div>
+      <PrintPromoModal 
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        product={product}
+      />
     </div>
   );
 };

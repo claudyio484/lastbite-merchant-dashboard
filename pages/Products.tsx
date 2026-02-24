@@ -18,14 +18,15 @@ import {
   CheckSquare,
   Check,
   LayoutGrid,
-  List as ListIcon
+  List as ListIcon,
+  Upload
 } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { Product, ProductStatus } from '../types';
-import { getProducts, saveProduct, deleteProduct, deleteProducts, bulkUpdateProducts } from '../utils/productStorage';
+import { fetchProducts, deleteProductApi, toggleFeaturedApi, updateProduct } from '../utils/api';
 
-const CATEGORIES = ['All', 'Produce', 'Dairy', 'Bakery', 'Meat', 'Pantry'];
+const CATEGORIES = ['All', 'Produce', 'Dairy', 'Bakery', 'Meat', 'Pantry', 'Expired'];
 
 const SORT_OPTIONS = [
     { label: 'Name (A-Z)', value: 'name_asc' },
@@ -35,6 +36,8 @@ const SORT_OPTIONS = [
     { label: 'Status', value: 'status' },
     { label: 'Featured', value: 'featured' }
 ];
+
+import { ImportWizardModal } from '../components/import-wizard/ImportWizardModal';
 
 export const Products: React.FC = () => {
   // Initialize from storage instead of static mock data
@@ -46,6 +49,7 @@ export const Products: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [activeMenuProductId, setActiveMenuProductId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   
   // Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set<string>());
@@ -57,15 +61,39 @@ export const Products: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Load products on mount and when focus returns (to catch edits)
+  // Load products from API
+  const loadProducts = async () => {
+    try {
+      const res = await fetchProducts();
+      const mapped: Product[] = (res.data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || p.productName || '',
+        category: p.category || 'Pantry',
+        originalPrice: Number(p.originalPrice ?? p.price ?? 0),
+        discountedPrice: Number(p.discountedPrice ?? p.finalPrice ?? p.originalPrice ?? 0),
+        expiryDate: p.expiryDate || p.expiry_date || new Date().toISOString(),
+        quantity: p.quantity ?? 0,
+        status: p.quantity <= 0 ? ProductStatus.SOLD_OUT
+          : (new Date(p.expiryDate || p.expiry_date) < new Date() ? ProductStatus.EXPIRED : ProductStatus.ACTIVE),
+        imageUrl: p.imageUrl || p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200',
+        featuredImageUrl: p.featuredImageUrl,
+        description: p.description || '',
+        isFeatured: p.isFeatured ?? false,
+        isVisible: p.isVisible ?? true,
+        gallery: p.gallery || [],
+        sku: p.sku,
+        barcode: p.barcode,
+      }));
+      setProducts(mapped);
+    } catch (err) {
+      console.error('Failed to load products:', err);
+    }
+  };
+
   useEffect(() => {
-    const loadData = () => {
-      setProducts(getProducts());
-    };
-    loadData();
-    
-    window.addEventListener('focus', loadData);
-    return () => window.removeEventListener('focus', loadData);
+    loadProducts();
+    window.addEventListener('focus', loadProducts);
+    return () => window.removeEventListener('focus', loadProducts);
   }, []);
 
   // Handle Navigation State from Dashboard
@@ -88,8 +116,17 @@ export const Products: React.FC = () => {
     // 1. Filter
     let result = products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // Special handling for Expired category
+      if (selectedCategory === 'Expired') {
+          return matchesSearch && product.status === ProductStatus.EXPIRED;
+      }
+
+      // For all other categories, exclude expired products
+      const isNotExpired = product.status !== ProductStatus.EXPIRED;
       const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-      return matchesSearch && matchesCategory;
+      
+      return matchesSearch && matchesCategory && isNotExpired;
     });
 
     // 2. Sort
@@ -154,18 +191,24 @@ export const Products: React.FC = () => {
       setDeleteModal({ isOpen: true, type: 'bulk' });
   };
 
-  const handleBulkStatusChange = (status: ProductStatus) => {
-      const itemsToUpdate = products.filter(p => selectedIds.has(p.id)).map(p => {
-          // If marking as SOLD_OUT, remove featured status
-          const updates: Partial<Product> = { status };
+  const handleBulkStatusChange = async (status: ProductStatus) => {
+      try {
+        const ids = Array.from(selectedIds);
+        for (const id of ids) {
+          const body: any = {};
           if (status === ProductStatus.SOLD_OUT) {
-              updates.isFeatured = false;
+            body.quantity = 0;
+            body.isFeatured = false;
+          } else if (status === ProductStatus.ACTIVE) {
+            body.isVisible = true;
           }
-          return { ...p, ...updates };
-      });
-      bulkUpdateProducts(itemsToUpdate);
-      setProducts(getProducts());
-      setSelectedIds(new Set());
+          await updateProduct(id, body);
+        }
+        await loadProducts();
+        setSelectedIds(new Set());
+      } catch (err) {
+        console.error('Bulk update failed:', err);
+      }
   };
 
   // Single Item Actions
@@ -174,34 +217,59 @@ export const Products: React.FC = () => {
       setActiveMenuProductId(null);
   };
 
-  const confirmDelete = () => {
-      if (deleteModal.type === 'bulk') {
-          deleteProducts(Array.from(selectedIds));
-          setProducts(getProducts());
+  const confirmDelete = async () => {
+      try {
+        if (deleteModal.type === 'bulk') {
+          for (const id of Array.from(selectedIds)) {
+            await deleteProductApi(id);
+          }
           setSelectedIds(new Set());
-      } else if (deleteModal.type === 'single' && deleteModal.id) {
-          deleteProduct(deleteModal.id);
-          setProducts(getProducts());
+        } else if (deleteModal.type === 'single' && deleteModal.id) {
+          await deleteProductApi(deleteModal.id);
+        }
+        await loadProducts();
+      } catch (err) {
+        console.error('Delete failed:', err);
       }
       setDeleteModal({ isOpen: false, type: 'single' });
   };
 
-  const toggleFeatured = (product: Product) => {
+  const toggleFeatured = async (product: Product) => {
       if (product.status === ProductStatus.SOLD_OUT || product.quantity <= 0) {
           alert("Cannot feature a product that is sold out.");
           return;
       }
-      const updated = { ...product, isFeatured: !product.isFeatured };
-      saveProduct(updated);
-      setProducts(getProducts());
+      try {
+        await toggleFeaturedApi(product.id);
+        await loadProducts();
+      } catch (err) {
+        console.error('Toggle featured failed:', err);
+      }
       setActiveMenuProductId(null);
   };
 
-  const toggleVisibility = (product: Product) => {
-      const updated = { ...product, isVisible: !product.isVisible };
-      saveProduct(updated);
-      setProducts(getProducts());
+  const toggleVisibility = async (product: Product) => {
+      try {
+        await updateProduct(product.id, { isVisible: !(product.isVisible !== false) });
+        await loadProducts();
+      } catch (err) {
+        console.error('Toggle visibility failed:', err);
+      }
       setActiveMenuProductId(null);
+  };
+
+  // Helper for Expiry Color
+  const getDaysRemaining = (dateStr: string) => {
+    const diff = new Date(dateStr).getTime() - Date.now();
+    const days = Math.ceil(diff / (1000 * 3600 * 24));
+    return days;
+  };
+
+  const getExpiryColorClass = (dateStr: string) => {
+      const days = getDaysRemaining(dateStr);
+      if (days <= 2) return 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-800';
+      if (days <= 7) return 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-900';
+      return 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-900';
   };
 
   return (
@@ -224,9 +292,17 @@ export const Products: React.FC = () => {
            <p className="text-gray-500 dark:text-gray-400 font-medium mt-1">Manage your inventory and pricing.</p>
         </div>
         
-        <Link to="/add-product" className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 hover:shadow-lg hover:shadow-brand-200 transition-all">
-            <Plus size={20} /> Add Product
-        </Link>
+        <div className="flex gap-3">
+            <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-slate-700 rounded-xl font-bold hover:bg-gray-50 dark:hover:bg-slate-700 hover:shadow-lg transition-all"
+            >
+                <Upload size={20} /> Import
+            </button>
+            <Link to="/add-product" className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 hover:shadow-lg hover:shadow-brand-200 transition-all">
+                <Plus size={20} /> Add Product
+            </Link>
+        </div>
       </div>
 
       <div className="flex flex-col gap-6">
@@ -442,7 +518,7 @@ export const Products: React.FC = () => {
                                               </div>
                                           </td>
                                           <td className="p-4">
-                                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold border ${getExpiryColorClass(product.expiryDate)}`}>
                                                   {new Date(product.expiryDate).toLocaleDateString()}
                                               </span>
                                           </td>
@@ -638,6 +714,10 @@ export const Products: React.FC = () => {
               </div>
           )}
       </div>
+      <ImportWizardModal 
+        isOpen={isImportModalOpen} 
+        onClose={() => setIsImportModalOpen(false)} 
+      />
     </div>
   );
 };

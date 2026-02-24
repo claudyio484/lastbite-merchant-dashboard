@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, ArrowLeft, Save, Sparkles, Trash2, RefreshCw, Clock, AlertCircle, Image as ImageIcon, Plus, ScanLine, Barcode, CheckCircle } from 'lucide-react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { saveProduct, getProductById } from '../utils/productStorage';
+import { createProduct, updateProduct, fetchProductById } from '../utils/api';
+import { compressImage } from '../utils/imageUtils';
 import { Product, ProductStatus } from '../types';
 
 // Mock Database for Barcode Lookup
@@ -74,34 +75,35 @@ export const AddProduct: React.FC = () => {
   const [featuredImage, setFeaturedImage] = useState('');
   const [gallery, setGallery] = useState<string[]>([]);
 
-  // Load product if editing from Storage
+  // Load product if editing from API
   useEffect(() => {
     if (id) {
-      const product = getProductById(id);
-      if (product) {
-        setName(product.name);
-        setSku(product.sku || '');
-        setBarcode(product.barcode || '');
-        setCategory(product.category);
-        setQuantity(product.quantity);
-        setOriginalPrice(product.originalPrice);
-        setFinalPrice(product.discountedPrice);
-        // Calculate discount percentage
-        const discountCalc = ((product.originalPrice - product.discountedPrice) / product.originalPrice) * 100;
-        setDiscount(Math.round(discountCalc));
-        
-        // Format for date input (YYYY-MM-DD)
-        const date = new Date(product.expiryDate);
-        const dateStr = date.toISOString().split('T')[0];
-        setExpiryDate(dateStr);
-        
-        setDescription(product.description || '');
-        setIsFeatured(product.isFeatured || false);
-        setIsVisible(product.isVisible !== false);
-        setImage(product.imageUrl || '');
-        setFeaturedImage(product.featuredImageUrl || '');
-        setGallery(product.gallery || []);
-      }
+      fetchProductById(id).then(res => {
+        const p = res.data;
+        if (p) {
+          setName(p.name || p.productName || '');
+          setSku(p.sku || '');
+          setBarcode(p.barcode || '');
+          setCategory(p.category || 'Produce');
+          setQuantity(p.quantity ?? 0);
+          setOriginalPrice(Number(p.originalPrice ?? p.price ?? 0));
+          setFinalPrice(Number(p.discountedPrice ?? p.finalPrice ?? p.originalPrice ?? 0));
+          const origPrice = Number(p.originalPrice ?? p.price ?? 0);
+          const discPrice = Number(p.discountedPrice ?? p.finalPrice ?? origPrice);
+          if (origPrice > 0) {
+            const discountCalc = ((origPrice - discPrice) / origPrice) * 100;
+            setDiscount(Math.round(discountCalc));
+          }
+          const date = new Date(p.expiryDate || p.expiry_date);
+          setExpiryDate(date.toISOString().split('T')[0]);
+          setDescription(p.description || '');
+          setIsFeatured(p.isFeatured ?? false);
+          setIsVisible(p.isVisible !== false);
+          setImage(p.imageUrl || p.image || '');
+          setFeaturedImage(p.featuredImageUrl || '');
+          setGallery(p.gallery || []);
+        }
+      }).catch(err => console.error('Failed to fetch product:', err));
     }
   }, [id]);
 
@@ -177,36 +179,56 @@ export const AddProduct: React.FC = () => {
   const featuredImageInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              setImage(reader.result as string);
-          };
-          reader.readAsDataURL(file);
+          try {
+              const compressed = await compressImage(file, 800, 0.7);
+              setImage(compressed);
+          } catch (error) {
+              console.error("Error compressing image:", error);
+              // Fallback to original if compression fails (though unlikely)
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                  setImage(reader.result as string);
+              };
+              reader.readAsDataURL(file);
+          }
       }
   };
 
-  const handleFeaturedImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFeaturedImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              setFeaturedImage(reader.result as string);
-          };
-          reader.readAsDataURL(file);
+          try {
+              // Featured images might need to be larger, e.g. 1200px
+              const compressed = await compressImage(file, 1200, 0.7);
+              setFeaturedImage(compressed);
+          } catch (error) {
+              console.error("Error compressing featured image:", error);
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                  setFeaturedImage(reader.result as string);
+              };
+              reader.readAsDataURL(file);
+          }
       }
   };
 
-  const handleGalleryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGalleryFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-              setGallery(prev => [...prev, reader.result as string]);
-          };
-          reader.readAsDataURL(file);
+          try {
+              const compressed = await compressImage(file, 800, 0.7);
+              setGallery(prev => [...prev, compressed]);
+          } catch (error) {
+              console.error("Error compressing gallery image:", error);
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                  setGallery(prev => [...prev, reader.result as string]);
+              };
+              reader.readAsDataURL(file);
+          }
       }
   };
 
@@ -250,14 +272,10 @@ export const AddProduct: React.FC = () => {
 
       setIsSaving(true);
 
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       const qty = Number(quantity) || 0;
+      const expiry = new Date(expiryDate + 'T23:59:59');
 
-      // Create product object
-      const product: Product = {
-        id: id || Date.now().toString(), // Generate simple ID
+      const body = {
         name,
         sku: sku || undefined,
         barcode: barcode || undefined,
@@ -265,25 +283,28 @@ export const AddProduct: React.FC = () => {
         quantity: qty,
         originalPrice: Number(originalPrice),
         discountedPrice: Number(finalPrice) || Number(originalPrice),
-        expiryDate: new Date(expiryDate + 'T23:59:59').toISOString(), // Set to end of day
-        status: qty > 0 ? ProductStatus.ACTIVE : ProductStatus.SOLD_OUT,
-        imageUrl: image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200', // Fallback
-        featuredImageUrl: featuredImage,
+        expiryDate: expiry.toISOString(),
+        imageUrl: image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200',
+        featuredImageUrl: featuredImage || undefined,
         description,
-        isFeatured: qty > 0 ? isFeatured : false, // Force false if sold out
+        isFeatured: qty > 0 && expiry >= new Date() ? isFeatured : false,
         isVisible,
-        gallery
+        gallery,
       };
 
-      saveProduct(product);
-      
-      setIsSaving(false);
-      setShowSuccess(true);
-
-      // Navigate after showing success message
-      setTimeout(() => {
-          navigate('/products');
-      }, 1500);
+      try {
+        if (id) {
+          await updateProduct(id, body);
+        } else {
+          await createProduct(body);
+        }
+        setIsSaving(false);
+        setShowSuccess(true);
+        setTimeout(() => navigate('/products'), 1500);
+      } catch (err: any) {
+        setIsSaving(false);
+        alert(err.message || 'Failed to save product');
+      }
   };
 
   const handleSaveDraft = () => {
