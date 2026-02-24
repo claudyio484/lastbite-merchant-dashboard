@@ -161,6 +161,50 @@ export async function verifyEmailOtpApi(email: string, code: string) {
   });
 }
 
+// ─── Users (Team Members) ────────────────────────────────
+export async function fetchUsers(search?: string) {
+  const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+  return apiFetch<{ success: boolean; data: any[] }>(`/users${qs}`);
+}
+
+export async function fetchUserById(id: string) {
+  return apiFetch<{ success: boolean; data: any }>(`/users/${id}`);
+}
+
+export async function createUserApi(body: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  role?: string;
+  jobTitle?: string;
+}) {
+  return apiFetch<{ success: boolean; data: any; tempPassword?: string }>('/users', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateUserApi(id: string, body: {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  role?: string;
+  jobTitle?: string;
+  isActive?: boolean;
+}) {
+  return apiFetch<{ success: boolean; data: any }>(`/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteUserApi(id: string) {
+  return apiFetch<{ success: boolean; message: string }>(`/users/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 // ─── Dashboard ───────────────────────────────────────────
 export async function getDashboardStats() {
   return apiFetch<{ success: boolean; data: any }>('/dashboard/stats');
