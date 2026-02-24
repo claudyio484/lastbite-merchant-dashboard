@@ -44,8 +44,17 @@ export const Badge: React.FC<BadgeProps> = ({ status, type, size = 'sm', childre
       case OrderStatus.READY:
         colorClass = 'bg-emerald-50 text-emerald-700 font-bold border-emerald-200';
         break;
-      case OrderStatus.COMPLETED:
+      case OrderStatus.OUT_FOR_DELIVERY:
+        colorClass = 'bg-blue-50 text-blue-700 font-bold border-blue-200';
+        break;
+      case OrderStatus.DELIVERED:
         colorClass = 'bg-slate-100 text-slate-600 font-bold border-slate-200';
+        break;
+      case OrderStatus.RETURNED:
+        colorClass = 'bg-rose-50 text-rose-700 font-bold border-rose-200';
+        break;
+      case OrderStatus.CANCELLED:
+        colorClass = 'bg-red-50 text-red-600 font-bold border-red-200 line-through decoration-red-400';
         break;
         
       default:

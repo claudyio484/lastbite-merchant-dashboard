@@ -1,30 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Clock, 
-  ShoppingBag, 
-  Search, 
-  Filter, 
-  MoreVertical, 
+import {
+  Clock,
+  ShoppingBag,
+  Search,
+  Filter,
+  MoreVertical,
   MapPin,
   Phone,
   X,
   Mail,
-  CreditCard, 
-  MessageSquare, 
-  ExternalLink, 
-  Navigation, 
-  CheckCircle2, 
-  Receipt, 
-  Send, 
-  ArrowLeft, 
-  Calendar, 
-  ArrowUpDown, 
-  History, 
-  Printer, 
-  Ban, 
-  Eye, 
+  CreditCard,
+  MessageSquare,
+  ExternalLink,
+  Navigation,
+  CheckCircle2,
+  Receipt,
+  Send,
+  ArrowLeft,
+  Calendar,
+  ArrowUpDown,
+  History,
+  Printer,
+  Ban,
+  Eye,
   FileText,
-  Bell
+  Bell,
+  Truck,
+  RotateCcw
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { Badge } from '../components/ui/Badge';
@@ -32,7 +34,7 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { Order, OrderStatus } from '../types';
 import { fetchOrders, updateOrderStatus } from '../utils/api';
 
-const TABS = ['All', 'New', 'Preparing', 'Ready', 'Completed'];
+const TABS = ['All', 'New', 'Preparing', 'Ready', 'Out for Delivery', 'Delivered', 'Returned'];
 const SORT_OPTIONS = [
     { label: 'Date: Newest', value: 'date_desc' },
     { label: 'Date: Oldest', value: 'date_asc' },
@@ -78,7 +80,11 @@ export const Orders: React.FC = () => {
             status: o.status === 'NEW' ? OrderStatus.NEW
                   : o.status === 'PREPARING' ? OrderStatus.PREPARING
                   : o.status === 'READY' ? OrderStatus.READY
-                  : OrderStatus.COMPLETED,
+                  : o.status === 'OUT_FOR_DELIVERY' ? OrderStatus.OUT_FOR_DELIVERY
+                  : o.status === 'DELIVERED' ? OrderStatus.DELIVERED
+                  : o.status === 'RETURNED' ? OrderStatus.RETURNED
+                  : o.status === 'CANCELLED' ? OrderStatus.CANCELLED
+                  : OrderStatus.NEW,
             timestamp: '',
             createdAt: o.createdAt,
             email: o.customer?.email,
@@ -177,14 +183,16 @@ export const Orders: React.FC = () => {
     switch(action) {
         case 'Accept': newStatus = OrderStatus.PREPARING; backendStatus = 'PREPARING'; break;
         case 'Ready': newStatus = OrderStatus.READY; backendStatus = 'READY'; break;
-        case 'Complete': newStatus = OrderStatus.COMPLETED; backendStatus = 'DELIVERED'; break;
+        case 'OutForDelivery': newStatus = OrderStatus.OUT_FOR_DELIVERY; backendStatus = 'OUT_FOR_DELIVERY'; break;
+        case 'Delivered': newStatus = OrderStatus.DELIVERED; backendStatus = 'DELIVERED'; break;
+        case 'Returned': newStatus = OrderStatus.RETURNED; backendStatus = 'RETURNED'; break;
         case 'Cancel':
              if(window.confirm('Are you sure you want to cancel this order?')) {
                const order = orderList.find(o => o.id === orderId);
                const realId = (order as any)?._backendId || orderId;
                try {
                  await updateOrderStatus(realId, 'CANCELLED');
-                 setOrderList(prev => prev.filter(o => o.id !== orderId));
+                 setOrderList(prev => prev.map(o => o.id === orderId ? { ...o, status: OrderStatus.CANCELLED } : o));
                  if(selectedOrder?.id === orderId) setSelectedOrder(null);
                } catch (err) {
                  console.error('Cancel failed:', err);
@@ -325,8 +333,14 @@ export const Orders: React.FC = () => {
         return 'bg-amber-50/40 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/30';
       case OrderStatus.READY:
         return 'bg-emerald-50/40 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/30';
-      case OrderStatus.COMPLETED:
+      case OrderStatus.OUT_FOR_DELIVERY:
+        return 'bg-blue-50/40 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/30';
+      case OrderStatus.DELIVERED:
         return 'bg-slate-50/50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700';
+      case OrderStatus.RETURNED:
+        return 'bg-rose-50/40 dark:bg-rose-900/10 border-rose-200 dark:border-rose-800/30';
+      case OrderStatus.CANCELLED:
+        return 'bg-red-50/40 dark:bg-red-900/10 border-red-200 dark:border-red-800/30 opacity-60';
       default:
         return 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700';
     }
@@ -337,19 +351,24 @@ export const Orders: React.FC = () => {
       case OrderStatus.NEW: return 'bg-purple-500 shadow-purple-200';
       case OrderStatus.PREPARING: return 'bg-amber-500 shadow-amber-200';
       case OrderStatus.READY: return 'bg-emerald-500 shadow-emerald-200';
-      case OrderStatus.COMPLETED: return 'bg-slate-500 shadow-slate-200';
+      case OrderStatus.OUT_FOR_DELIVERY: return 'bg-blue-500 shadow-blue-200';
+      case OrderStatus.DELIVERED: return 'bg-slate-500 shadow-slate-200';
+      case OrderStatus.RETURNED: return 'bg-rose-500 shadow-rose-200';
+      case OrderStatus.CANCELLED: return 'bg-red-500 shadow-red-200';
       default: return 'bg-gray-400';
     }
   };
 
   const getTabStyles = (tab: string, isActive: boolean) => {
     if (!isActive) return 'bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700 shadow-soft';
-    
+
     switch (tab) {
         case 'New': return 'bg-purple-600 text-white shadow-md shadow-purple-200';
         case 'Preparing': return 'bg-amber-500 text-white shadow-md shadow-amber-200';
         case 'Ready': return 'bg-emerald-600 text-white shadow-md shadow-emerald-200';
-        case 'Completed': return 'bg-slate-600 text-white shadow-md shadow-slate-200';
+        case 'Out for Delivery': return 'bg-blue-600 text-white shadow-md shadow-blue-200';
+        case 'Delivered': return 'bg-slate-600 text-white shadow-md shadow-slate-200';
+        case 'Returned': return 'bg-rose-600 text-white shadow-md shadow-rose-200';
         default: return 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 shadow-lg';
     }
   };
@@ -596,7 +615,7 @@ export const Orders: React.FC = () => {
                <div className="flex gap-2 mt-auto pt-2 border-t border-gray-100/50 dark:border-slate-700/50 relative">
                   {/* Logic for main button based on status */}
                   {order.status === OrderStatus.NEW && (
-                     <button 
+                     <button
                          onClick={(e) => handleAction(e, order.id, 'Accept')}
                          className="flex-1 py-2.5 px-4 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 shadow-md shadow-purple-200 transition-all text-sm flex items-center justify-center gap-2"
                      >
@@ -604,7 +623,7 @@ export const Orders: React.FC = () => {
                      </button>
                   )}
                   {order.status === OrderStatus.PREPARING && (
-                     <button 
+                     <button
                          onClick={(e) => handleAction(e, order.id, 'Ready')}
                          className="flex-1 py-2.5 px-4 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 shadow-md shadow-amber-200 transition-all text-sm flex items-center justify-center gap-2"
                      >
@@ -612,16 +631,51 @@ export const Orders: React.FC = () => {
                      </button>
                   )}
                   {order.status === OrderStatus.READY && (
-                     <button 
-                         onClick={(e) => handleAction(e, order.id, 'Complete')}
+                     <button
+                         onClick={(e) => handleAction(e, order.id, 'OutForDelivery')}
                          className="flex-1 py-2.5 px-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-md shadow-emerald-200 transition-all text-sm flex items-center justify-center gap-2"
                      >
-                        Complete
+                        <Truck size={16} /> Out for Delivery
                      </button>
                   )}
-                  {order.status === OrderStatus.COMPLETED && (
-                     <button className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 font-bold rounded-xl cursor-default text-sm flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
-                        View Details
+                  {order.status === OrderStatus.OUT_FOR_DELIVERY && (
+                     <div className="flex-1 flex gap-2">
+                        <button
+                            onClick={(e) => handleAction(e, order.id, 'Delivered')}
+                            className="flex-1 py-2.5 px-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 shadow-md shadow-emerald-200 transition-all text-sm flex items-center justify-center gap-1.5"
+                        >
+                           <CheckCircle2 size={15} /> Delivered
+                        </button>
+                        <button
+                            onClick={(e) => handleAction(e, order.id, 'Returned')}
+                            className="flex-1 py-2.5 px-3 bg-rose-500 text-white font-bold rounded-xl hover:bg-rose-600 shadow-md shadow-rose-200 transition-all text-sm flex items-center justify-center gap-1.5"
+                        >
+                           <RotateCcw size={15} /> Returned
+                        </button>
+                     </div>
+                  )}
+                  {order.status === OrderStatus.DELIVERED && (
+                     <button
+                        onClick={() => setSelectedOrder(order)}
+                        className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                     >
+                        <Eye size={16} /> View Details
+                     </button>
+                  )}
+                  {order.status === OrderStatus.RETURNED && (
+                     <button
+                        onClick={() => setSelectedOrder(order)}
+                        className="flex-1 py-2.5 px-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors border border-rose-200 dark:border-rose-800"
+                     >
+                        <Eye size={16} /> View Details
+                     </button>
+                  )}
+                  {order.status === OrderStatus.CANCELLED && (
+                     <button
+                        onClick={() => setSelectedOrder(order)}
+                        className="flex-1 py-2.5 px-4 bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-200 dark:border-red-800"
+                     >
+                        <Eye size={16} /> View Details
                      </button>
                   )}
 
@@ -638,10 +692,15 @@ export const Orders: React.FC = () => {
                              <button onClick={(e) => { e.stopPropagation(); handlePrintReceipt(order); }} className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-2">
                                  <Printer size={16} /> Print Receipt
                              </button>
-                             <div className="h-px bg-gray-100 dark:bg-slate-700 my-1"></div>
-                             <button onClick={(e) => handleAction(e, order.id, 'Cancel')} className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center gap-2">
-                                 <Ban size={16} /> Cancel Order
-                             </button>
+                             {/* Only show Cancel for non-terminal statuses */}
+                             {![OrderStatus.DELIVERED, OrderStatus.RETURNED, OrderStatus.CANCELLED].includes(order.status) && (
+                               <>
+                                 <div className="h-px bg-gray-100 dark:bg-slate-700 my-1"></div>
+                                 <button onClick={(e) => handleAction(e, order.id, 'Cancel')} className="w-full text-left px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center gap-2">
+                                     <Ban size={16} /> Cancel Order
+                                 </button>
+                               </>
+                             )}
                         </div>
                     )}
                   </div>

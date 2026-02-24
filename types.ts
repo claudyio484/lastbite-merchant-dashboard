@@ -10,7 +10,10 @@ export enum OrderStatus {
   NEW = 'New',
   PREPARING = 'Preparing',
   READY = 'Ready',
-  COMPLETED = 'Completed',
+  OUT_FOR_DELIVERY = 'Out for Delivery',
+  DELIVERED = 'Delivered',
+  RETURNED = 'Returned',
+  CANCELLED = 'Cancelled',
 }
 
 export interface Product {
