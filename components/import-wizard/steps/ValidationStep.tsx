@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ImportState, ImportAction } from '../../../types/import.types';
 import { PreviewTable } from '../components/PreviewTable';
 import { confirmImport } from '../../../services/importService';
-import { CheckCircle2, Loader2, ArrowLeft, Save } from 'lucide-react';
+import { CheckCircle2, Loader2, ArrowLeft, Save, AlertCircle, RotateCcw } from 'lucide-react';
 
 interface ValidationStepProps {
   state: ImportState;
@@ -19,25 +19,37 @@ const PROGRESS_STEPS = [
 
 export const ValidationStep: React.FC<ValidationStepProps> = ({ state, dispatch, onClose }) => {
   const [progressStep, setProgressStep] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleConfirm = async () => {
     dispatch({ type: 'SET_STATUS', payload: 'confirming' });
+    setErrorMessage('');
 
-    for (let i = 0; i < PROGRESS_STEPS.length; i++) {
+    // Show first 3 progress steps as visual feedback
+    for (let i = 0; i < 3; i++) {
         setProgressStep(i);
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 600));
     }
 
     try {
+        // Step 4: actual API call
+        setProgressStep(3);
         await confirmImport(state);
         dispatch({ type: 'SET_STATUS', payload: 'success' });
-    } catch (e) {
+    } catch (e: any) {
         console.error('[ValidationStep] Import failed:', e);
+        setErrorMessage(e.message || 'Import failed. Please try again.');
         dispatch({ type: 'SET_STATUS', payload: 'error' });
     }
   };
 
-  if (state.status === 'confirming' || state.status === 'success') {
+  const handleRetry = () => {
+    setProgressStep(0);
+    setErrorMessage('');
+    dispatch({ type: 'SET_STATUS', payload: 'idle' });
+  };
+
+  if (state.status === 'confirming' || state.status === 'success' || state.status === 'error') {
       return (
           <div className="flex flex-col items-center justify-center h-full py-12">
               {state.status === 'confirming' ? (
@@ -58,6 +70,32 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({ state, dispatch,
                                   </span>
                               </div>
                           ))}
+                      </div>
+                  </div>
+              ) : state.status === 'error' ? (
+                  <div className="text-center space-y-6 animate-in zoom-in-95 duration-300">
+                      <div className="w-20 h-20 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+                          <AlertCircle size={40} strokeWidth={2.5} />
+                      </div>
+                      <div>
+                          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white mb-2">Import failed</h2>
+                          <p className="text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
+                              {errorMessage || 'Something went wrong while saving your products.'}
+                          </p>
+                      </div>
+                      <div className="flex gap-3 justify-center">
+                          <button
+                            onClick={handleRetry}
+                            className="bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold py-3 px-6 rounded-xl transition-all flex items-center gap-2"
+                          >
+                              <RotateCcw size={18} /> Go Back
+                          </button>
+                          <button
+                            onClick={handleConfirm}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg flex items-center gap-2"
+                          >
+                              <RotateCcw size={18} /> Retry
+                          </button>
                       </div>
                   </div>
               ) : (

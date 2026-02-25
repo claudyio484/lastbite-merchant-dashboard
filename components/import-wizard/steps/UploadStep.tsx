@@ -24,12 +24,14 @@ const OPTIONAL_FIELDS = [
 export const UploadStep: React.FC<UploadStepProps> = ({ state, dispatch }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
     dispatch({ type: 'SET_FILE', payload: file });
     setIsParsing(true);
-    
+    setUploadError('');
+
     try {
       const { columns, errors, rawRows } = await parseFile(file);
       // Auto-map columns based on flexible matching
@@ -49,8 +51,9 @@ export const UploadStep: React.FC<UploadStepProps> = ({ state, dispatch }) => {
       dispatch({ type: 'SET_MAPPING', payload: mapping });
       dispatch({ type: 'SET_ERRORS', payload: errors });
       dispatch({ type: 'SET_RAW_ROWS', payload: rawRows });
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('[UploadStep] Parse failed:', e);
+      setUploadError(e.message || 'Failed to parse file. Please check the format and try again.');
     } finally {
       setIsParsing(false);
     }
@@ -106,16 +109,21 @@ export const UploadStep: React.FC<UploadStepProps> = ({ state, dispatch }) => {
             
             {state.file ? (
               <div className="text-center">
-                <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <FileText size={32} />
+                <div className={`w-16 h-16 ${uploadError ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-600' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                  {uploadError ? <AlertCircle size={32} /> : <FileText size={32} />}
                 </div>
                 <p className="font-bold text-gray-900 dark:text-white mb-1">{state.file.name}</p>
                 <p className="text-sm text-gray-500">{(state.file.size / 1024).toFixed(1)} KB</p>
-                <button 
+                {uploadError && (
+                  <div className="mt-3 p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg text-sm text-rose-700 dark:text-rose-300 font-medium">
+                    {uploadError}
+                  </div>
+                )}
+                <button
                   onClick={() => fileInputRef.current?.click()}
                   className="mt-4 text-sm text-emerald-600 hover:text-emerald-700 font-medium"
                 >
-                  Change file
+                  {uploadError ? 'Try another file' : 'Change file'}
                 </button>
               </div>
             ) : (

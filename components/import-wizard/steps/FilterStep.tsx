@@ -11,29 +11,31 @@ interface FilterStepProps {
 export const FilterStep: React.FC<FilterStepProps> = ({ state, dispatch }) => {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const runPreview = async () => {
+    if (!state.rawRows || state.rawRows.length === 0) return;
+    setIsLoadingPreview(true);
+    setPreviewError(null);
+    try {
+      const preview = await generatePreview(state);
+      dispatch({ type: 'SET_PREVIEW', payload: preview });
+    } catch (err: any) {
+      console.error('[FilterStep] Preview generation failed:', err);
+      setPreviewError(err.message || 'Failed to generate preview');
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
 
   useEffect(() => {
     // Don't call preview if we don't have raw rows yet
     if (!state.rawRows || state.rawRows.length === 0) return;
 
-    const updatePreview = async () => {
-      setIsLoadingPreview(true);
-      setPreviewError(null);
-      try {
-        const preview = await generatePreview(state);
-        dispatch({ type: 'SET_PREVIEW', payload: preview });
-      } catch (err: any) {
-        console.error('[FilterStep] Preview generation failed:', err);
-        setPreviewError(err.message || 'Failed to generate preview');
-      } finally {
-        setIsLoadingPreview(false);
-      }
-    };
-
     // Debounce preview update
-    const timer = setTimeout(updatePreview, 500);
+    const timer = setTimeout(runPreview, 500);
     return () => clearTimeout(timer);
-  }, [state.windowDays, state.includeExpired, state.rawRows?.length]);
+  }, [state.windowDays, state.includeExpired, state.rawRows?.length, retryCount]);
 
   return (
     <div className="flex flex-col h-full max-w-2xl mx-auto">
@@ -98,11 +100,7 @@ export const FilterStep: React.FC<FilterStepProps> = ({ state, dispatch }) => {
                  <AlertTriangle size={32} className="text-amber-400 mb-3" />
                  <p className="text-amber-400 text-sm font-medium text-center">{previewError}</p>
                  <button
-                   onClick={() => {
-                     setPreviewError(null);
-                     // Re-trigger by toggling a dummy state change
-                     dispatch({ type: 'SET_WINDOW_DAYS', payload: state.windowDays });
-                   }}
+                   onClick={() => setRetryCount(c => c + 1)}
                    className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 underline"
                  >
                    Retry
