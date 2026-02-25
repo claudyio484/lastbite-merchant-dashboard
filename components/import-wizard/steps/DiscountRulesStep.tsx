@@ -13,16 +13,20 @@ export const DiscountRulesStep: React.FC<DiscountRulesStepProps> = ({ state, dis
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
   useEffect(() => {
+    if (!state.rawRows || state.rawRows.length === 0) return;
+
     const updatePreview = async () => {
       setIsLoadingPreview(true);
       try {
         const preview = await generatePreview(state);
         dispatch({ type: 'SET_PREVIEW', payload: preview });
+      } catch (err: any) {
+        console.error('[DiscountRulesStep] Preview generation failed:', err);
       } finally {
         setIsLoadingPreview(false);
       }
     };
-    
+
     const timer = setTimeout(updatePreview, 500);
     return () => clearTimeout(timer);
   }, [state.discountRules, state.roundPrices]);

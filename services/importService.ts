@@ -6,16 +6,52 @@ function getAuthToken(): string | null {
   return localStorage.getItem('accessToken');
 }
 
+function getRefreshToken(): string | null {
+  return localStorage.getItem('refreshToken');
+}
+
+async function tryRefreshToken(): Promise<string | null> {
+  const rt = getRefreshToken();
+  if (!rt) return null;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: rt }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    localStorage.setItem('accessToken', data.accessToken);
+    localStorage.setItem('refreshToken', data.refreshToken);
+    return data.accessToken;
+  } catch {
+    return null;
+  }
+}
+
 async function apiFetchJson<T = any>(path: string, body: any): Promise<T> {
-  const token = getAuthToken();
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
+  let token = getAuthToken();
+
+  const doFetch = async (t: string | null) => {
+    return fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  };
+
+  let res = await doFetch(token);
+
+  // If 401, try refreshing the token once
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      res = await doFetch(newToken);
+    }
+  }
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({ message: res.statusText }));
@@ -38,12 +74,25 @@ export const parseFile = async (
   const formData = new FormData();
   formData.append('file', file);
 
-  const token = getAuthToken();
-  const res = await fetch(`${API_BASE}/v1/products/import/parse`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-  });
+  let token = getAuthToken();
+
+  const doFetch = async (t: string | null) => {
+    return fetch(`${API_BASE}/v1/products/import/parse`, {
+      method: 'POST',
+      headers: t ? { Authorization: `Bearer ${t}` } : {},
+      body: formData,
+    });
+  };
+
+  let res = await doFetch(token);
+
+  // If 401, try refreshing the token once
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      res = await doFetch(newToken);
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));

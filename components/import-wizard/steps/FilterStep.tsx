@@ -10,22 +10,30 @@ interface FilterStepProps {
 
 export const FilterStep: React.FC<FilterStepProps> = ({ state, dispatch }) => {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Don't call preview if we don't have raw rows yet
+    if (!state.rawRows || state.rawRows.length === 0) return;
+
     const updatePreview = async () => {
       setIsLoadingPreview(true);
+      setPreviewError(null);
       try {
         const preview = await generatePreview(state);
         dispatch({ type: 'SET_PREVIEW', payload: preview });
+      } catch (err: any) {
+        console.error('[FilterStep] Preview generation failed:', err);
+        setPreviewError(err.message || 'Failed to generate preview');
       } finally {
         setIsLoadingPreview(false);
       }
     };
-    
+
     // Debounce preview update
     const timer = setTimeout(updatePreview, 500);
     return () => clearTimeout(timer);
-  }, [state.windowDays, state.includeExpired]);
+  }, [state.windowDays, state.includeExpired, state.rawRows?.length]);
 
   return (
     <div className="flex flex-col h-full max-w-2xl mx-auto">
@@ -43,7 +51,7 @@ export const FilterStep: React.FC<FilterStepProps> = ({ state, dispatch }) => {
               min={1}
               max={90}
               value={state.windowDays}
-              onChange={(e) => dispatch({ type: 'SET_WINDOW_DAYS', payload: parseInt(e.target.value) || 0 })}
+              onChange={(e) => dispatch({ type: 'SET_WINDOW_DAYS', payload: Math.max(1, Math.min(90, parseInt(e.target.value) || 1)) })}
               className="w-20 text-center font-bold border-b-2 border-emerald-500 bg-transparent focus:outline-none text-gray-900 dark:text-white"
             />
             <span>days</span>
@@ -85,7 +93,22 @@ export const FilterStep: React.FC<FilterStepProps> = ({ state, dispatch }) => {
 
         {/* Preview Card */}
         <div className="bg-slate-900 text-white rounded-2xl p-1 shadow-2xl border border-slate-800 ring-1 ring-white/10">
-          {isLoadingPreview && !state.preview ? (
+          {previewError ? (
+             <div className="flex flex-col items-center justify-center h-48 px-6">
+                 <AlertTriangle size={32} className="text-amber-400 mb-3" />
+                 <p className="text-amber-400 text-sm font-medium text-center">{previewError}</p>
+                 <button
+                   onClick={() => {
+                     setPreviewError(null);
+                     // Re-trigger by toggling a dummy state change
+                     dispatch({ type: 'SET_WINDOW_DAYS', payload: state.windowDays });
+                   }}
+                   className="mt-3 text-xs text-indigo-400 hover:text-indigo-300 underline"
+                 >
+                   Retry
+                 </button>
+             </div>
+          ) : isLoadingPreview && !state.preview ? (
              <div className="flex items-center justify-center h-48">
                  <Loader2 className="animate-spin text-slate-500" size={32} />
              </div>
