@@ -27,10 +27,15 @@ export const UploadStep: React.FC<UploadStepProps> = ({ state, dispatch }) => {
     
     try {
       const { columns, errors, rawRows } = await parseFile(file);
-      // Auto-map columns based on simple matching
+      // Auto-map columns based on flexible matching
+      // Normalize both sides: replace underscores with spaces for comparison
       const mapping: Record<string, string> = {};
       REQUIRED_FIELDS.forEach(field => {
-        const match = columns.find(c => c.toLowerCase().includes(field.key.replace('_', ' ')));
+        const fieldNorm = field.key.replace(/_/g, ' ').toLowerCase();
+        const match = columns.find(c => {
+          const colNorm = c.replace(/_/g, ' ').toLowerCase();
+          return colNorm.includes(fieldNorm) || fieldNorm.includes(colNorm);
+        });
         if (match) mapping[field.key] = match;
       });
 

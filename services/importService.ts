@@ -92,34 +92,33 @@ export const generatePreview = async (state: ImportState): Promise<ImportPreview
 
   const preview = data.data || {};
 
-  // Map backend preview to frontend ImportPreview shape
-  const items: ImportPreviewItem[] = (preview.previews || preview.items || []).map(
+  // Backend returns: { totalRows, retained, expired, skippedZeroQty, parseErrors, distribution, deals }
+  // Each deal: { sku, productName, barcode, expiryDate, daysToExpiry, quantity, originalPrice, discountPct, finalPrice, warning? }
+  const deals = preview.deals || preview.previews || preview.items || [];
+  const items: ImportPreviewItem[] = deals.map(
     (item: any, idx: number) => ({
       id: item.id || `row-${idx}`,
-      name: item.product_name || item.name || '',
+      name: item.productName || item.product_name || item.name || '',
       sku: item.sku || '',
-      expiryDate: item.expiry_date || item.expiryDate || '',
-      daysLeft: item.days_to_expiry ?? item.daysLeft ?? 0,
+      expiryDate: item.expiryDate || item.expiry_date || '',
+      daysLeft: item.daysToExpiry ?? item.days_to_expiry ?? 0,
       quantity: item.quantity ?? 0,
-      originalPrice: Number(item.original_price ?? item.originalPrice ?? 0),
-      discount: item.discount_pct ?? item.discount ?? 0,
-      finalPrice: Number(item.final_price ?? item.finalPrice ?? 0),
-      status: item.status === 'expired' ? 'expired' : item.status === 'ignored' ? 'ignored' : 'active',
+      originalPrice: Number(item.originalPrice ?? item.original_price ?? 0),
+      discount: item.discountPct ?? item.discount_pct ?? 0,
+      finalPrice: Number(item.finalPrice ?? item.final_price ?? 0),
+      status: 'active' as const,
     })
   );
 
-  const activeItems = items.filter(i => i.status === 'active');
-
   return {
-    totalRows: preview.original_total ?? preview.totalRows ?? items.length,
-    nearExpiryRetained: preview.retained_count ?? preview.nearExpiryRetained ?? activeItems.length,
-    alreadyExpired:
-      preview.expired_count ?? preview.alreadyExpired ?? items.filter(i => i.status === 'expired').length,
-    ignored: preview.skipped_count ?? preview.ignored ?? items.filter(i => i.status === 'ignored').length,
-    items: activeItems,
-    totalRetail: activeItems.reduce((sum, item) => sum + item.originalPrice * item.quantity, 0),
-    totalFinal: activeItems.reduce((sum, item) => sum + item.finalPrice * item.quantity, 0),
-    dealCount: activeItems.length,
+    totalRows: preview.totalRows ?? items.length,
+    nearExpiryRetained: preview.retained ?? items.length,
+    alreadyExpired: preview.expired ?? 0,
+    ignored: preview.skippedZeroQty ?? 0,
+    items,
+    totalRetail: items.reduce((sum, item) => sum + item.originalPrice * item.quantity, 0),
+    totalFinal: items.reduce((sum, item) => sum + item.finalPrice * item.quantity, 0),
+    dealCount: items.length,
   };
 };
 
