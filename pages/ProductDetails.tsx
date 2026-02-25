@@ -41,22 +41,26 @@ export const ProductDetails: React.FC = () => {
       fetchProductById(id).then(res => {
         const p = res.data;
         if (p) {
+          const catName = typeof p.category === 'object' ? p.category?.name : p.category;
+          const stock = p.stock ?? p.quantity ?? 0;
+          const expiryStr = p.expiryDate || p.expiry_date || new Date().toISOString();
+          const imgs = Array.isArray(p.images) ? p.images : [];
           setProduct({
             id: p.id,
-            name: p.name || p.productName || '',
-            category: p.category || 'Pantry',
-            originalPrice: Number(p.originalPrice ?? p.price ?? 0),
-            discountedPrice: Number(p.discountedPrice ?? p.finalPrice ?? p.originalPrice ?? 0),
-            expiryDate: p.expiryDate || p.expiry_date || new Date().toISOString(),
-            quantity: p.quantity ?? 0,
-            status: p.quantity <= 0 ? ProductStatus.SOLD_OUT
-              : (new Date(p.expiryDate || p.expiry_date) < new Date() ? ProductStatus.EXPIRED : ProductStatus.ACTIVE),
-            imageUrl: p.imageUrl || p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200',
-            featuredImageUrl: p.featuredImageUrl,
+            name: p.name || '',
+            category: catName || 'Pantry',
+            originalPrice: Number(p.originalPrice ?? 0),
+            discountedPrice: Number(p.finalPrice ?? p.discountedPrice ?? p.originalPrice ?? 0),
+            expiryDate: expiryStr,
+            quantity: stock,
+            status: p.status === 'SOLD_OUT' || stock <= 0 ? ProductStatus.SOLD_OUT
+              : (p.status === 'EXPIRED' || new Date(expiryStr) < new Date() ? ProductStatus.EXPIRED : ProductStatus.ACTIVE),
+            imageUrl: imgs[0] || p.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200',
+            featuredImageUrl: imgs[1] || p.featuredImageUrl,
             description: p.description || '',
             isFeatured: p.isFeatured ?? false,
-            isVisible: p.isVisible ?? true,
-            gallery: p.gallery || [],
+            isVisible: p.isVisible ?? (p.status !== 'INACTIVE'),
+            gallery: imgs.slice(1),
             sku: p.sku,
             barcode: p.barcode,
           });
@@ -116,10 +120,10 @@ export const ProductDetails: React.FC = () => {
   const toggleVisibility = async () => {
       if (!product) return;
       const currentVisibility = product.isVisible !== false;
-      const newVisibility = !currentVisibility;
+      const newStatus = currentVisibility ? 'INACTIVE' : 'ACTIVE';
       try {
-        await updateProduct(product.id, { isVisible: newVisibility });
-        setProduct({ ...product, isVisible: newVisibility });
+        await updateProduct(product.id, { status: newStatus });
+        setProduct({ ...product, isVisible: !currentVisibility });
       } catch (err) {
         console.error('Toggle visibility failed:', err);
       }

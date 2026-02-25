@@ -81,17 +81,19 @@ export const AddProduct: React.FC = () => {
       fetchProductById(id).then(res => {
         const p = res.data;
         if (p) {
-          setName(p.name || p.productName || '');
+          const catName = typeof p.category === 'object' ? p.category?.name : p.category;
+          const imgs = Array.isArray(p.images) ? p.images : [];
+          setName(p.name || '');
           setSku(p.sku || '');
           setBarcode(p.barcode || '');
-          setCategory(p.category || 'Produce');
-          setQuantity(p.quantity ?? 0);
-          setOriginalPrice(Number(p.originalPrice ?? p.price ?? 0));
-          setFinalPrice(Number(p.discountedPrice ?? p.finalPrice ?? p.originalPrice ?? 0));
-          const origPrice = Number(p.originalPrice ?? p.price ?? 0);
-          const discPrice = Number(p.discountedPrice ?? p.finalPrice ?? origPrice);
+          setCategory(catName || 'Produce');
+          setQuantity(p.stock ?? p.quantity ?? 0);
+          const origPrice = Number(p.originalPrice ?? 0);
+          const discPrice = Number(p.finalPrice ?? p.discountedPrice ?? origPrice);
+          setOriginalPrice(origPrice);
+          setFinalPrice(discPrice);
           if (origPrice > 0) {
-            const discountCalc = ((origPrice - discPrice) / origPrice) * 100;
+            const discountCalc = p.discountPct ?? ((origPrice - discPrice) / origPrice) * 100;
             setDiscount(Math.round(discountCalc));
           }
           const date = new Date(p.expiryDate || p.expiry_date);
@@ -99,9 +101,9 @@ export const AddProduct: React.FC = () => {
           setDescription(p.description || '');
           setIsFeatured(p.isFeatured ?? false);
           setIsVisible(p.isVisible !== false);
-          setImage(p.imageUrl || p.image || '');
-          setFeaturedImage(p.featuredImageUrl || '');
-          setGallery(p.gallery || []);
+          setImage(imgs[0] || p.imageUrl || '');
+          setFeaturedImage(imgs[1] || p.featuredImageUrl || '');
+          setGallery(imgs.slice(1));
         }
       }).catch(err => console.error('Failed to fetch product:', err));
     }
@@ -275,21 +277,25 @@ export const AddProduct: React.FC = () => {
       const qty = Number(quantity) || 0;
       const expiry = new Date(expiryDate + 'T23:59:59');
 
+      // Build images array from main image + gallery
+      const allImages: string[] = [];
+      if (image) allImages.push(image);
+      else allImages.push('https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200');
+      if (featuredImage) allImages.push(featuredImage);
+      if (gallery.length) allImages.push(...gallery);
+
       const body = {
         name,
         sku: sku || undefined,
         barcode: barcode || undefined,
-        category,
-        quantity: qty,
-        originalPrice: Number(originalPrice),
-        discountedPrice: Number(finalPrice) || Number(originalPrice),
-        expiryDate: expiry.toISOString(),
-        imageUrl: image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200',
-        featuredImageUrl: featuredImage || undefined,
         description,
+        stock: qty,
+        originalPrice: Number(originalPrice),
+        discountPct: Number(discount) || 0,
+        expiryDate: expiry.toISOString(),
+        images: allImages,
         isFeatured: qty > 0 && expiry >= new Date() ? isFeatured : false,
-        isVisible,
-        gallery,
+        status: qty > 0 ? 'ACTIVE' : 'SOLD_OUT',
       };
 
       try {
