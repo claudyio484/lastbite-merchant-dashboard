@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ImportState, ImportAction } from '../../../types/import.types';
 import { PreviewTable } from '../components/PreviewTable';
 import { confirmImport } from '../../../services/importService';
-import { CheckCircle2, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, Loader2, ArrowLeft, Save } from 'lucide-react';
 
 interface ValidationStepProps {
   state: ImportState;
@@ -10,16 +10,20 @@ interface ValidationStepProps {
   onClose: () => void;
 }
 
+const PROGRESS_STEPS = [
+  'Normalizing data...',
+  'Applying discount rules...',
+  'Creating products...',
+  'Saving to Products...',
+];
+
 export const ValidationStep: React.FC<ValidationStepProps> = ({ state, dispatch, onClose }) => {
   const [progressStep, setProgressStep] = useState(0);
-  
+
   const handleConfirm = async () => {
     dispatch({ type: 'SET_STATUS', payload: 'confirming' });
-    
-    // Simulate progress steps
-    const steps = ['Normalizing data...', 'Applying discount rules...', 'Creating deals...', 'Publishing to marketplace...'];
-    
-    for (let i = 0; i < steps.length; i++) {
+
+    for (let i = 0; i < PROGRESS_STEPS.length; i++) {
         setProgressStep(i);
         await new Promise(resolve => setTimeout(resolve, 800));
     }
@@ -28,6 +32,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({ state, dispatch,
         await confirmImport(state);
         dispatch({ type: 'SET_STATUS', payload: 'success' });
     } catch (e) {
+        console.error('[ValidationStep] Import failed:', e);
         dispatch({ type: 'SET_STATUS', payload: 'error' });
     }
   };
@@ -39,7 +44,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({ state, dispatch,
                   <div className="space-y-6 w-full max-w-md">
                       <h3 className="text-xl font-bold text-center text-gray-900 dark:text-white mb-8">Processing Import...</h3>
                       <div className="space-y-4">
-                          {['Normalizing data...', 'Applying discount rules...', 'Creating deals...', 'Publishing to marketplace...'].map((step, idx) => (
+                          {PROGRESS_STEPS.map((step, idx) => (
                               <div key={idx} className="flex items-center gap-3">
                                   {progressStep > idx ? (
                                       <div className="text-emerald-500"><CheckCircle2 size={20} /></div>
@@ -63,10 +68,10 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({ state, dispatch,
                       <div>
                           <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white mb-2">Import complete</h2>
                           <p className="text-gray-500 dark:text-gray-400">
-                              {state.preview?.dealCount} deals created — {state.publishMode === 'publish' ? '18 published, 108 drafts' : '0 published, 126 drafts'}
+                              {state.preview?.dealCount || 0} products saved to your inventory
                           </p>
                       </div>
-                      <button 
+                      <button
                         onClick={onClose}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg hover:shadow-emerald-500/20"
                       >
@@ -83,58 +88,19 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({ state, dispatch,
       {/* Summary Bar */}
       <div className="flex gap-3 mb-6">
         <div className="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-full text-xs font-bold border border-emerald-100 dark:border-emerald-900/30">
-            {state.preview?.dealCount} deals
+            {state.preview?.dealCount || 0} products
         </div>
         <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-full text-xs font-bold border border-gray-200 dark:border-gray-700">
-            Total retail {state.preview?.totalRetail.toLocaleString()} AED
+            Total retail {state.preview?.totalRetail?.toLocaleString() || 0} AED
         </div>
         <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-full text-xs font-bold border border-gray-200 dark:border-gray-700">
-            Total final {state.preview?.totalFinal.toLocaleString()} AED
+            Total final {state.preview?.totalFinal?.toLocaleString() || 0} AED
         </div>
       </div>
 
       {/* Table Preview */}
       <div className="flex-1 min-h-0 mb-6">
           {state.preview?.items && <PreviewTable items={state.preview.items} />}
-      </div>
-
-      {/* Publish Options */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
-          <div 
-            onClick={() => dispatch({ type: 'SET_PUBLISH_MODE', payload: 'publish' })}
-            className={`
-                p-4 rounded-xl border-2 cursor-pointer transition-all
-                ${state.publishMode === 'publish' 
-                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10' 
-                    : 'border-gray-200 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-900/50'}
-            `}
-          >
-              <div className="flex items-center gap-2 mb-1">
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${state.publishMode === 'publish' ? 'border-emerald-600' : 'border-gray-400'}`}>
-                      {state.publishMode === 'publish' && <div className="w-2 h-2 rounded-full bg-emerald-600"></div>}
-                  </div>
-                  <span className="font-bold text-gray-900 dark:text-white">Publish immediately</span>
-              </div>
-              <p className="text-xs text-gray-500 pl-6">Deals go live on the marketplace right away</p>
-          </div>
-
-          <div 
-            onClick={() => dispatch({ type: 'SET_PUBLISH_MODE', payload: 'draft' })}
-            className={`
-                p-4 rounded-xl border-2 cursor-pointer transition-all
-                ${state.publishMode === 'draft' 
-                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/10' 
-                    : 'border-gray-200 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-900/50'}
-            `}
-          >
-              <div className="flex items-center gap-2 mb-1">
-                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${state.publishMode === 'draft' ? 'border-emerald-600' : 'border-gray-400'}`}>
-                      {state.publishMode === 'draft' && <div className="w-2 h-2 rounded-full bg-emerald-600"></div>}
-                  </div>
-                  <span className="font-bold text-gray-900 dark:text-white">Save as draft</span>
-              </div>
-              <p className="text-xs text-gray-500 pl-6">Review before publishing in Products &gt; Drafts</p>
-          </div>
       </div>
 
       {/* Footer */}
@@ -149,7 +115,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({ state, dispatch,
           onClick={handleConfirm}
           className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-sm flex items-center gap-2"
         >
-          <CheckCircle2 size={18} /> Confirm Import
+          <Save size={18} /> Save
         </button>
       </div>
     </div>
