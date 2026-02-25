@@ -16,6 +16,11 @@ const REQUIRED_FIELDS = [
   { key: 'name', label: 'Product Name' },
 ];
 
+const OPTIONAL_FIELDS = [
+  { key: 'barcode', label: 'Barcode' },
+  { key: 'category', label: 'Category' },
+];
+
 export const UploadStep: React.FC<UploadStepProps> = ({ state, dispatch }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -30,7 +35,8 @@ export const UploadStep: React.FC<UploadStepProps> = ({ state, dispatch }) => {
       // Auto-map columns based on flexible matching
       // Normalize both sides: replace underscores with spaces for comparison
       const mapping: Record<string, string> = {};
-      REQUIRED_FIELDS.forEach(field => {
+      const allFields = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS];
+      allFields.forEach(field => {
         const fieldNorm = field.key.replace(/_/g, ' ').toLowerCase();
         const match = columns.find(c => {
           const colNorm = c.replace(/_/g, ' ').toLowerCase();

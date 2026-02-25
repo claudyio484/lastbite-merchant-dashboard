@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  MoreHorizontal, 
+import {
+  Plus,
+  Search,
+  Filter,
+  MoreHorizontal,
   AlertCircle,
   Sparkles,
   ChevronLeft,
@@ -19,14 +19,15 @@ import {
   Check,
   LayoutGrid,
   List as ListIcon,
-  Upload
+  Upload,
+  ChevronDown
 } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { Product, ProductStatus } from '../types';
 import { fetchProducts, deleteProductApi, toggleFeaturedApi, updateProduct } from '../utils/api';
 
-const CATEGORIES = ['All', 'Produce', 'Dairy', 'Bakery', 'Meat', 'Pantry', 'Expired'];
+const VISIBLE_CAT_COUNT = 3; // how many category tabs to show before "More"
 
 const SORT_OPTIONS = [
     { label: 'Name (A-Z)', value: 'name_asc' },
@@ -50,7 +51,9 @@ export const Products: React.FC = () => {
   const [activeMenuProductId, setActiveMenuProductId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  
+  const [showCatDropdown, setShowCatDropdown] = useState(false);
+  const catDropdownRef = useRef<HTMLDivElement>(null);
+
   // Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set<string>());
   
@@ -102,6 +105,36 @@ export const Products: React.FC = () => {
     return () => window.removeEventListener('focus', loadProducts);
   }, []);
 
+  // Close category dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (catDropdownRef.current && !catDropdownRef.current.contains(e.target as Node)) {
+        setShowCatDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Build dynamic categories from actual product data (exclude "Expired")
+  const { visibleCats, dropdownCats } = useMemo(() => {
+    const catCounts = new Map<string, number>();
+    products.forEach(p => {
+      if (p.category && p.status !== ProductStatus.EXPIRED) {
+        catCounts.set(p.category, (catCounts.get(p.category) || 0) + 1);
+      }
+    });
+    // Sort by count descending
+    const sorted = Array.from(catCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+
+    return {
+      visibleCats: sorted.slice(0, VISIBLE_CAT_COUNT),
+      dropdownCats: sorted.slice(VISIBLE_CAT_COUNT),
+    };
+  }, [products]);
+
   // Handle Navigation State from Dashboard
   useEffect(() => {
       if (location.state && location.state.sortBy) {
@@ -122,17 +155,8 @@ export const Products: React.FC = () => {
     // 1. Filter
     let result = products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      // Special handling for Expired category
-      if (selectedCategory === 'Expired') {
-          return matchesSearch && product.status === ProductStatus.EXPIRED;
-      }
-
-      // For all other categories, exclude expired products
-      const isNotExpired = product.status !== ProductStatus.EXPIRED;
       const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-      
-      return matchesSearch && matchesCategory && isNotExpired;
+      return matchesSearch && matchesCategory;
     });
 
     // 2. Sort
@@ -318,20 +342,67 @@ export const Products: React.FC = () => {
           {/* Controls Bar */}
           <div className="flex flex-col lg:flex-row justify-between gap-6">
               {/* Category Tabs */}
-              <div className="flex overflow-x-auto pb-2 lg:pb-0 gap-2 no-scrollbar">
-                  {CATEGORIES.map(cat => (
+              <div className="flex overflow-x-auto pb-2 lg:pb-0 gap-2 no-scrollbar items-center">
+                  {/* "All" tab */}
+                  <button
+                      onClick={() => setSelectedCategory('All')}
+                      className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${
+                          selectedCategory === 'All'
+                          ? 'bg-brand-600 text-white shadow-md shadow-brand-200'
+                          : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700'
+                      }`}
+                  >
+                      All
+                  </button>
+
+                  {/* First N visible categories */}
+                  {visibleCats.map(cat => (
                       <button
                           key={cat}
                           onClick={() => setSelectedCategory(cat)}
                           className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${
-                              selectedCategory === cat 
-                              ? 'bg-brand-600 text-white shadow-md shadow-brand-200' 
+                              selectedCategory === cat
+                              ? 'bg-brand-600 text-white shadow-md shadow-brand-200'
                               : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700'
                           }`}
                       >
                           {cat}
                       </button>
                   ))}
+
+                  {/* More dropdown for remaining categories */}
+                  {dropdownCats.length > 0 && (
+                      <div className="relative" ref={catDropdownRef}>
+                          <button
+                              onClick={() => setShowCatDropdown(!showCatDropdown)}
+                              className={`px-4 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1 ${
+                                  dropdownCats.includes(selectedCategory)
+                                  ? 'bg-brand-600 text-white shadow-md shadow-brand-200'
+                                  : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700'
+                              }`}
+                          >
+                              {dropdownCats.includes(selectedCategory) ? selectedCategory : 'More'}
+                              <ChevronDown size={16} className={`transition-transform ${showCatDropdown ? 'rotate-180' : ''}`} />
+                          </button>
+
+                          {showCatDropdown && (
+                              <div className="absolute left-0 top-full mt-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-100 dark:border-slate-700 py-1 z-20 animate-in fade-in zoom-in-95 duration-200 max-h-60 overflow-y-auto">
+                                  {dropdownCats.map(cat => (
+                                      <button
+                                          key={cat}
+                                          onClick={() => { setSelectedCategory(cat); setShowCatDropdown(false); }}
+                                          className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center justify-between ${
+                                              selectedCategory === cat ? 'text-brand-600' : 'text-gray-700 dark:text-gray-300'
+                                          }`}
+                                      >
+                                          {cat}
+                                          {selectedCategory === cat && <Check size={16} />}
+                                      </button>
+                                  ))}
+                              </div>
+                          )}
+                      </div>
+                  )}
               </div>
 
               {/* Search & Sort */}
@@ -723,9 +794,9 @@ export const Products: React.FC = () => {
               </div>
           )}
       </div>
-      <ImportWizardModal 
-        isOpen={isImportModalOpen} 
-        onClose={() => setIsImportModalOpen(false)} 
+      <ImportWizardModal
+        isOpen={isImportModalOpen}
+        onClose={() => { setIsImportModalOpen(false); loadProducts(); }}
       />
     </div>
   );
