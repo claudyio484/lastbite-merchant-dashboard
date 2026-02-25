@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, ArrowLeft, Save, Sparkles, Trash2, RefreshCw, Clock, AlertCircle, Image as ImageIcon, Plus, ScanLine, Barcode, CheckCircle } from 'lucide-react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { createProduct, updateProduct, fetchProductById } from '../utils/api';
+import { createProduct, updateProduct, fetchProductById, fetchCategories } from '../utils/api';
 import { compressImage } from '../utils/imageUtils';
 import { Product, ProductStatus } from '../types';
 
@@ -69,7 +69,10 @@ export const AddProduct: React.FC = () => {
   // UI State
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  
+
+  // Category State (from API)
+  const [categories, setCategories] = useState<{ id: string; name: string; slug: string }[]>([]);
+
   // Image State
   const [image, setImage] = useState('');
   const [featuredImage, setFeaturedImage] = useState('');
@@ -108,6 +111,24 @@ export const AddProduct: React.FC = () => {
       }).catch(err => console.error('Failed to fetch product:', err));
     }
   }, [id]);
+
+  // Load categories from API
+  useEffect(() => {
+    fetchCategories()
+      .then(res => {
+        if (res.data && res.data.length > 0) {
+          setCategories(res.data);
+          // Default to first category if current is not in the list
+          if (!id) {
+            const names = res.data.map((c: any) => c.name);
+            if (!names.includes(category)) {
+              setCategory(res.data[0].name);
+            }
+          }
+        }
+      })
+      .catch(err => console.error('Failed to load categories:', err));
+  }, []);
 
   // Handle Automatic Barcode Lookup
   useEffect(() => {
@@ -284,11 +305,19 @@ export const AddProduct: React.FC = () => {
       if (featuredImage) allImages.push(featuredImage);
       if (gallery.length) allImages.push(...gallery);
 
-      const body = {
+      // Resolve categoryId from category name
+      let resolvedCategoryId: string | undefined = undefined;
+      if (category) {
+        const found = categories.find(c => c.name.toLowerCase() === category.toLowerCase());
+        resolvedCategoryId = found?.id;
+      }
+
+      const body: any = {
         name,
         sku: sku || undefined,
         barcode: barcode || undefined,
         description,
+        categoryId: resolvedCategoryId || undefined,
         stock: qty,
         originalPrice: Number(originalPrice),
         discountPct: Number(discount) || 0,
@@ -431,16 +460,24 @@ export const AddProduct: React.FC = () => {
                 <div>
                   <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Category</label>
                   <div className="relative">
-                    <select 
+                    <select
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
                         className="w-full px-5 py-3.5 bg-cream-50 dark:bg-slate-900 border-none rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:bg-white dark:focus:bg-slate-900 transition-all outline-none font-medium appearance-none cursor-pointer text-gray-900 dark:text-white"
                     >
-                        <option value="Produce">Produce</option>
-                        <option value="Bakery">Bakery</option>
-                        <option value="Dairy">Dairy</option>
-                        <option value="Meat">Meat</option>
-                        <option value="Pantry">Pantry</option>
+                        {categories.length > 0 ? (
+                          categories.map(cat => (
+                            <option key={cat.id} value={cat.name}>{cat.name}</option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="Produce">Produce</option>
+                            <option value="Bakery">Bakery</option>
+                            <option value="Dairy">Dairy</option>
+                            <option value="Meat">Meat</option>
+                            <option value="Pantry">Pantry</option>
+                          </>
+                        )}
                     </select>
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>

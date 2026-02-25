@@ -216,7 +216,7 @@ export async function getActionNeeded() {
 
 // ─── Products ────────────────────────────────────────────
 export async function fetchProducts() {
-  return apiFetch<{ success: boolean; data: any[] }>('/products');
+  return apiFetch<{ success: boolean; data: any[] }>('/products?limit=500');
 }
 
 export async function fetchProductById(id: string) {
